@@ -1,0 +1,12 @@
+{
+  // Evita que Live Server recargue la página cada vez que se guarda algo en la base de datos o en el servidor
+  "liveServer.settings.ignoreFiles": [
+    ".vscode/**",
+    "**/*.scss",
+    "**/*.sass",
+    "**/*.ts",
+    "data/**",
+    "node_modules/**",
+    "src/**"
+  ]
+}

@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Credisiman · Control de gastos</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- ================= Inicio de sesión ================= -->
+  <main id="vista-login" class="login" hidden>
+    <svg class="login-ondas" viewBox="0 0 1440 400" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 220C240 140 420 320 720 250S1200 120 1440 200V400H0Z" fill="#e4defb"/>
+      <path d="M0 300C300 230 520 380 820 310S1240 230 1440 290V400H0Z" fill="#cfc5f7"/>
+    </svg>
+    <form id="form-login" class="login-caja" novalidate>
+      <div class="logo-grande"><i data-icon="card"></i></div>
+      <h1>Credisiman</h1>
+      <p class="login-sub">Control de gastos compartidos</p>
+      <p class="login-lema">Tu tarjeta, tus registros, todo en un solo lugar.</p>
+
+      <label class="campo-icono">
+        <i data-icon="mail"></i>
+        <input name="correo" type="email" placeholder="Correo electrónico" required autocomplete="username">
+      </label>
+      <label class="campo-icono">
+        <i data-icon="lock"></i>
+        <input name="password" type="password" placeholder="Contraseña" required autocomplete="current-password">
+        <button type="button" class="btn-ojo" id="btn-ver-password" aria-label="Mostrar contraseña"><i data-icon="eye"></i></button>
+      </label>
+
+      <div class="login-opciones">
+        <label class="check"><input type="checkbox" name="recordar" checked> Recordarme</label>
+        <a href="#" id="link-olvido">¿Olvidaste tu contraseña?</a>
+      </div>
+      <button type="submit" class="btn btn-primario btn-bloque">Iniciar sesión</button>
+      <p class="mensaje-error" id="login-error" role="alert"></p>
+      <p class="mensaje-info" id="login-info" hidden>Pide a la persona administradora que te asigne una contraseña nueva desde <b>Configuración → Usuarios</b>.</p>
+    </form>
+  </main>
+
+  <!-- ================= Aplicación ================= -->
+  <div id="vista-app" class="app" hidden>
+    <aside class="lateral" id="lateral">
+      <div class="marca">
+        <span class="marca-logo"><i data-icon="card"></i></span> Credisiman
+        <button class="btn-icono solo-movil btn-menu" id="btn-menu" aria-label="Menú"><i data-icon="menu"></i></button>
+      </div>
+      <nav class="menu" id="menu">
+        <a href="#inicio" data-vista="inicio"><i data-icon="home"></i> Inicio</a>
+        <a href="#registrar" data-vista="registrar"><i data-icon="edit"></i> Registrar gasto</a>
+        <a href="#gastos" data-vista="gastos"><i data-icon="list"></i> Mis gastos</a>
+        <a href="#personas" data-vista="personas"><i data-icon="user"></i> Personas</a>
+        <a href="#reportes" data-vista="reportes"><i data-icon="chart"></i> Reportes</a>
+        <a href="#configuracion" data-vista="configuracion"><i data-icon="settings"></i> Configuración</a>
+      </nav>
+      <div class="perfil">
+        <span class="avatar" id="perfil-avatar"></span>
+        <div class="perfil-datos"><strong id="perfil-nombre"></strong><small id="perfil-rol"></small></div>
+        <button class="btn-icono" id="btn-salir" title="Cerrar sesión" aria-label="Cerrar sesión"><i data-icon="logout"></i></button>
+      </div>
+    </aside>
+
+    <main class="principal">
+      <!-- ---------- Inicio ---------- -->
+      <section data-vista="inicio">
+        <header class="encabezado">
+          <h1>Resumen de la tarjeta</h1>
+          <select class="sel-mes" aria-label="Mes"></select>
+        </header>
+        <div id="inicio-sin-tarjeta" class="panel vacio-grande" hidden></div>
+        <div id="inicio-contenido">
+          <div class="inicio-grid">
+            <div class="panel resumen">
+              <div class="resumen-top">
+                <div>
+                  <p class="etiqueta">Límite de la tarjeta</p>
+                  <p class="cifra-hero" id="res-limite"></p>
+                </div>
+                <span class="icono-tarjeta"><i data-icon="card"></i></span>
+              </div>
+              <div class="progreso" role="progressbar" aria-label="Uso del límite"><div id="res-barra"></div></div>
+              <div class="resumen-sub">
+                <div class="sub-caja">
+                  <p class="etiqueta">Total gastado</p>
+                  <p class="cifra" id="res-gastado"></p>
+                  <small id="res-gastado-pct"></small>
+                </div>
+                <div class="sub-caja">
+                  <p class="etiqueta">Disponible</p>
+                  <p class="cifra verde" id="res-disponible"></p>
+                  <small id="res-disponible-pct"></small>
+                </div>
+              </div>
+            </div>
+            <div class="panel acciones-rapidas">
+              <h2>Acciones rápidas</h2>
+              <a href="#registrar" class="btn btn-primario"><i data-icon="plus"></i> Registrar nuevo gasto</a>
+              <a href="#reportes" class="btn btn-suave"><i data-icon="chart"></i> Ver reportes</a>
+              <a href="#gastos" class="btn btn-suave"><i data-icon="list"></i> Ver mis gastos</a>
+              <a href="#personas" class="btn btn-suave"><i data-icon="users"></i> Gestionar personas</a>
+            </div>
+          </div>
+          <h2 class="titulo-seccion">Gastos por persona <small id="inicio-mes-label"></small></h2>
+          <div class="personas-grid" id="inicio-personas"></div>
+        </div>
+      </section>
+
+      <!-- ---------- Registrar gasto ---------- -->
+      <section data-vista="registrar" hidden>
+        <header class="encabezado">
+          <h1>Registrar gasto</h1>
+          <a href="#inicio" class="btn-icono" aria-label="Cerrar"><i data-icon="x"></i></a>
+        </header>
+        <div class="panel registro">
+          <ol class="pasos" id="pasos">
+            <li data-paso="1"><span class="paso-num">1</span><span>Subir factura</span></li>
+            <li data-paso="2"><span class="paso-num">2</span><span>Revisar datos</span></li>
+            <li data-paso="3"><span class="paso-num">3</span><span>Confirmar</span></li>
+          </ol>
+
+          <!-- Paso 1 -->
+          <div class="paso" data-paso="1">
+            <label class="zona-subida" id="zona-subida">
+              <input type="file" id="input-factura" accept="image/jpeg,image/png,image/webp" hidden>
+              <div class="zona-contenido" id="zona-contenido">
+                <span class="zona-icono"><i data-icon="receipt"></i><span class="zona-camara"><i data-icon="camera"></i></span></span>
+                <strong>Sube una foto de la factura</strong>
+                <p>El sistema leerá automáticamente<br>la información (fecha, comercio y monto)</p>
+                <span class="btn btn-primario">Seleccionar imagen</span>
+                <small>o arrastra la imagen aquí</small>
+              </div>
+              <div class="zona-cargando" id="zona-cargando" hidden>
+                <span class="spinner"></span>
+                <strong>Leyendo la factura…</strong>
+                <p>La primera vez puede tardar un poco mientras se prepara el lector.</p>
+              </div>
+            </label>
+            <p class="mensaje-error" id="subida-error" role="alert"></p>
+            <div class="aviso">
+              <i data-icon="info"></i>
+              <div><b>Formatos aceptados: JPG, PNG, WEBP</b> (máx. 8 MB)<br>Asegúrate de que la imagen esté clara y completa.</div>
+            </div>
+            <p class="centrado"><button type="button" class="btn-link" id="btn-sin-factura">Registrar sin factura</button></p>
+          </div>
+
+          <!-- Paso 2 -->
+          <div class="paso dos-columnas" data-paso="2" hidden>
+            <div class="col-imagen">
+              <div class="marco-factura" id="paso2-imagen"></div>
+              <button type="button" class="btn btn-borde btn-bloque" id="btn-cambiar-imagen"><i data-icon="image"></i> Cambiar imagen</button>
+            </div>
+            <form id="form-datos" class="col-datos" novalidate>
+              <h2>Datos extraídos</h2>
+              <label>Comercio <input name="comercio" required maxlength="200"></label>
+              <label>Fecha <input name="fecha_compra" type="date" required></label>
+              <label>Monto total
+                <span class="campo-prefijo"><span>$</span><input name="monto" type="number" step="0.01" min="0.01" required inputmode="decimal"></span>
+              </label>
+              <div class="aviso aviso-ok" id="aviso-ocr" hidden></div>
+              <p class="mensaje-error" id="datos-error" role="alert"></p>
+              <div class="botones">
+                <a href="#inicio" class="btn btn-borde">Cancelar</a>
+                <button type="submit" class="btn btn-primario">Continuar</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Paso 3 -->
+          <div class="paso dos-columnas invertido" data-paso="3" hidden>
+            <form id="form-confirmar" class="col-datos" novalidate>
+              <div class="caja-resumen">
+                <h2>Resumen del gasto</h2>
+                <dl class="lista-datos">
+                  <dt>Comercio</dt><dd id="conf-comercio"></dd>
+                  <dt>Fecha</dt><dd id="conf-fecha"></dd>
+                  <dt>Monto</dt><dd id="conf-monto"></dd>
+                  <dt>Persona</dt><dd><select name="persona_id" id="conf-persona" required></select></dd>
+                </dl>
+                <label>Nota (opcional) <textarea name="nota" rows="3" maxlength="500" placeholder="Agregar una nota…"></textarea></label>
+              </div>
+              <p class="mensaje-error" id="confirmar-error" role="alert"></p>
+              <div class="botones">
+                <button type="button" class="btn btn-borde" id="btn-anterior">Anterior</button>
+                <button type="submit" class="btn btn-primario">Guardar gasto</button>
+              </div>
+            </form>
+            <div class="col-imagen">
+              <div class="marco-factura" id="paso3-imagen"></div>
+            </div>
+          </div>
+
+          <!-- Éxito -->
+          <div class="paso exito" data-paso="4" hidden>
+            <div class="confeti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <span class="exito-icono"><i data-icon="check"></i></span>
+            <h2>¡Gasto registrado!</h2>
+            <p>El monto de <b id="exito-monto"></b> se ha descontado<br>del límite de la tarjeta.</p>
+            <div class="panel exito-saldo">
+              <p>Nuevo saldo</p>
+              <p class="cifra-hero verde" id="exito-saldo"></p>
+            </div>
+            <button type="button" class="btn btn-primario btn-bloque" id="btn-otro-gasto">Registrar otro gasto</button>
+            <a href="#gastos" class="btn btn-suave btn-bloque">Ver mis gastos</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- Mis gastos ---------- -->
+      <section data-vista="gastos" hidden>
+        <header class="encabezado">
+          <h1>Mis gastos</h1>
+          <div class="encabezado-controles">
+            <select class="sel-mes" aria-label="Mes"></select>
+            <label class="buscador"><i data-icon="search"></i><input type="search" id="buscar-gastos" placeholder="Buscar…"></label>
+          </div>
+        </header>
+        <div class="chips" id="chips-personas"></div>
+        <div class="panel tabla-panel">
+          <table class="tabla">
+            <thead>
+              <tr><th>Fecha</th><th>Comercio</th><th class="num">Monto</th><th>Persona</th><th>Factura</th><th class="der">Acciones</th></tr>
+            </thead>
+            <tbody id="tabla-gastos"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---------- Detalle del gasto ---------- -->
+      <section data-vista="detalle" hidden>
+        <header class="encabezado">
+          <h1><a href="#gastos" class="btn-icono" aria-label="Volver"><i data-icon="back"></i></a> Detalle del gasto</h1>
+          <a class="btn-icono" id="detalle-descargar" title="Descargar factura" aria-label="Descargar factura"><i data-icon="download"></i></a>
+        </header>
+        <div class="panel dos-columnas">
+          <div class="col-imagen"><div class="marco-factura" id="detalle-imagen"></div></div>
+          <div class="col-datos">
+            <h2>Información de la factura</h2>
+            <dl class="lista-datos" id="detalle-datos"></dl>
+            <div class="botones" id="detalle-acciones"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- Personas ---------- -->
+      <section data-vista="personas" hidden>
+        <header class="encabezado">
+          <h1>Personas</h1>
+          <select class="sel-mes" aria-label="Mes"></select>
+        </header>
+        <form id="form-persona" class="panel fila-form" data-admin novalidate>
+          <label>Nueva persona <input name="nombre" required maxlength="60" placeholder="Ej. Mamá"></label>
+          <button type="submit" class="btn btn-primario"><i data-icon="plus"></i> Agregar</button>
+        </form>
+        <p class="mensaje-error" id="persona-error" role="alert"></p>
+        <div class="personas-grid" id="lista-personas"></div>
+      </section>
+
+      <!-- ---------- Reportes ---------- -->
+      <section data-vista="reportes" hidden>
+        <header class="encabezado">
+          <h1>Reporte mensual <small class="solo-impresion" id="rep-titulo-mes"></small></h1>
+          <div class="encabezado-controles">
+            <select class="sel-mes" aria-label="Mes"></select>
+            <button class="btn btn-primario" id="btn-pdf"><i data-icon="download"></i> Descargar PDF</button>
+          </div>
+        </header>
+        <div class="stats">
+          <div class="panel stat"><span class="stat-icono morado"><i data-icon="receipt"></i></span>
+            <div><p class="etiqueta">Total gastado</p><p class="cifra" id="rep-total"></p><small id="rep-total-pct"></small></div></div>
+          <div class="panel stat"><span class="stat-icono verde"><i data-icon="check"></i></span>
+            <div><p class="etiqueta">Disponible</p><p class="cifra" id="rep-disponible"></p><small id="rep-disponible-pct"></small></div></div>
+          <div class="panel stat"><span class="stat-icono naranja"><i data-icon="list"></i></span>
+            <div><p class="etiqueta">Total de compras</p><p class="cifra" id="rep-compras"></p><small>transacciones</small></div></div>
+        </div>
+        <div class="reporte-grid">
+          <div class="panel">
+            <h2>Gasto por persona</h2>
+            <div id="rep-barras" class="barras"></div>
+          </div>
+          <div class="panel">
+            <h2>Distribución del gasto</h2>
+            <div class="dona-caja">
+              <div id="rep-dona" class="dona"></div>
+              <ul id="rep-leyenda" class="leyenda"></ul>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Comercios con más gasto</h2>
+          <table class="tabla">
+            <thead><tr><th>Comercio</th><th class="num">Compras</th><th class="num">Total</th></tr></thead>
+            <tbody id="rep-comercios"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---------- Configuración ---------- -->
+      <section data-vista="configuracion" hidden>
+        <header class="encabezado"><h1>Configuración</h1></header>
+        <div class="config-grid">
+          <form id="form-tarjeta" class="panel form-vertical" data-admin novalidate>
+            <h2>Tarjeta</h2>
+            <label>Nombre <input name="nombre" required maxlength="100" placeholder="Credisiman Clásica"></label>
+            <label>Límite de crédito <span class="campo-prefijo"><span>$</span><input name="limite" type="number" step="0.01" min="0" required></span></label>
+            <label>Saldo inicial (deuda previa) <span class="campo-prefijo"><span>$</span><input name="saldo_inicial" type="number" step="0.01" min="0" value="0"></span></label>
+            <label>Estado <select name="estado"><option value="activa">Activa</option><option value="bloqueada">Bloqueada</option></select></label>
+            <p class="mensaje-error" id="tarjeta-error" role="alert"></p>
+            <button type="submit" class="btn btn-primario">Guardar tarjeta</button>
+          </form>
+
+          <form id="form-password" class="panel form-vertical" novalidate>
+            <h2>Mi cuenta</h2>
+            <label>Contraseña actual <input name="actual" type="password" required autocomplete="current-password"></label>
+            <label>Contraseña nueva <input name="nueva" type="password" minlength="6" required autocomplete="new-password"></label>
+            <p class="mensaje-error" id="password-error" role="alert"></p>
+            <button type="submit" class="btn btn-primario">Cambiar contraseña</button>
+          </form>
+        </div>
+
+        <div class="panel" data-admin>
+          <h2>Usuarios del sistema</h2>
+          <form id="form-usuario" class="fila-form" novalidate>
+            <label>Nombre <input name="nombre" required></label>
+            <label>Correo <input name="correo" type="email" required></label>
+            <label>Contraseña <input name="password" type="password" minlength="6" required autocomplete="new-password"></label>
+            <label>Rol <select name="rol"><option value="usuario">Usuario</option><option value="admin">Administrador</option></select></label>
+            <button type="submit" class="btn btn-primario"><i data-icon="plus"></i> Crear</button>
+          </form>
+          <p class="mensaje-error" id="usuario-error" role="alert"></p>
+          <table class="tabla">
+            <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th class="der">Acciones</th></tr></thead>
+            <tbody id="tabla-usuarios"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Visor de imagen y tooltip -->
+  <div class="visor" id="visor" hidden><button class="btn-icono" aria-label="Cerrar"><i data-icon="x"></i></button><img alt="Factura"></div>
+  <div class="tooltip" id="tooltip" hidden></div>
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

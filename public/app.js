@@ -1,0 +1,763 @@
+// Desde Live Server (puertos 5500+) el API sigue en el servidor de Node, puerto 3000.
+// Se usa el mismo hostname de la página para que la cookie de sesión funcione.
+const API_PUERTO = '3000';
+const esLiveServer = /^55\d\d$/.test(location.port);
+const API_BASE = esLiveServer ? `${location.protocol}//${location.hostname}:${API_PUERTO}` : '';
+
+// Colores por persona: orden fijo validado (contraste y daltonismo); el color sigue a la persona, no a su posición
+const PALETA = ['#6250d6', '#eb6834', '#2a78d6', '#eda100', '#1baf7a', '#e87ba4', '#008300', '#e34948'];
+const COLOR_OTROS = '#8a87a3';
+
+const ICONOS = {
+  home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  list: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  settings: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  card: '<rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  lock: '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  check: '<path d="m5 12 5 5L20 7"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>',
+  receipt: '<path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  back: '<path d="M19 12H5M12 19l-7-7 7-7"/>',
+  download: '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>',
+  zoom: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M11 8v6M8 11h6"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  ban: '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
+  menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>',
+  pencil: '<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.3-9.3M17 6l3 3M15 8l2 2"/>',
+};
+const ic = (nombre) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[nombre] || ''}</svg>`;
+
+// ---------- Utilidades ----------
+const $ = (sel, raiz = document) => raiz.querySelector(sel);
+const $$ = (sel, raiz = document) => [...raiz.querySelectorAll(sel)];
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const dinero = (n) => '$' + Number(n || 0).toLocaleString('es-SV', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = (n) => `${Number(n || 0).toLocaleString('es-SV', { maximumFractionDigits: 1 })}%`;
+const fechaCorta = (iso) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—');
+const fechaHora = (s) => (s ? `${fechaCorta(s)} ${s.slice(11, 16)}` : '—');
+const hoy = () => new Date().toLocaleDateString('en-CA');
+const nombreMes = (mes) => {
+  const [a, m] = mes.split('-').map(Number);
+  const texto = new Date(a, m - 1, 1).toLocaleDateString('es', { month: 'long', year: 'numeric' }).replace(' de ', ' ');
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+};
+const iniciales = (nombre) => nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+// Contenido de data-tip: el navegador lo decodifica al leerlo y luego se inserta como HTML, por eso se escapa dos veces
+const tip = (titulo, texto) => esc(`<b>${esc(titulo)}</b>${texto}`);
+const datosForm = (form) => Object.fromEntries(new FormData(form));
+const urlFactura = (gastoId, descargar) => `${API_BASE}/api/facturas/${gastoId}/imagen${descargar ? '?descargar=1' : ''}`;
+
+async function api(url, opciones = {}) {
+  const esForm = opciones.body instanceof FormData;
+  const res = await fetch(API_BASE + url, {
+    ...opciones,
+    credentials: 'include',
+    headers: esForm ? undefined : { 'Content-Type': 'application/json' },
+    body: esForm ? opciones.body : opciones.body ? JSON.stringify(opciones.body) : undefined,
+  }).catch(() => {
+    throw new Error('No hay conexión con el servidor. Ejecuta "npm run dev" en la terminal.');
+  });
+  const datos = await res.json().catch(() => ({ error: 'Respuesta inválida del servidor' }));
+  if (res.status === 401 && url !== '/api/auth/login') mostrarLogin();
+  if (!res.ok) throw Object.assign(new Error(datos.error || 'Error inesperado'), { status: res.status, datos });
+  return datos;
+}
+
+let toastTimer;
+function toast(mensaje) {
+  const el = $('#toast');
+  el.textContent = mensaje;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+}
+
+// Ejecuta una acción mostrando el error en un elemento (o en un aviso) y bloqueando el botón mientras tanto
+async function conError(destino, accion, boton) {
+  if (destino) destino.textContent = '';
+  if (boton) boton.disabled = true;
+  try {
+    return await accion();
+  } catch (err) {
+    if (destino) destino.textContent = err.message;
+    else toast(err.message);
+  } finally {
+    if (boton) boton.disabled = false;
+  }
+}
+
+function pintarIconos(raiz = document) {
+  $$('i[data-icon]', raiz).forEach((i) => { i.outerHTML = ic(i.dataset.icon); });
+}
+
+// ---------- Estado ----------
+const estado = {
+  usuario: null,
+  tarjeta: null,
+  personas: [],
+  mes: hoy().slice(0, 7),
+  filtroPersona: '',
+};
+const esAdmin = () => estado.usuario?.rol === 'admin';
+
+function colorPersona(id) {
+  const orden = [...estado.personas].sort((a, b) => a.id - b.id).findIndex((p) => p.id === id);
+  return orden >= 0 && orden < PALETA.length ? PALETA[orden] : COLOR_OTROS;
+}
+const avatarPersona = (id) => {
+  const color = colorPersona(id);
+  return `<span class="avatar-persona" style="background:${color}1f;color:${color}">${ic('user')}</span>`;
+};
+const pastillaPersona = (id, nombre) => {
+  if (!nombre) return '<span class="pastilla pastilla-neutra">Sin asignar</span>';
+  const color = colorPersona(id);
+  return `<span class="pastilla" style="background:${color}1a;color:var(--tinta)"><span class="punto" style="background:${color}"></span>${esc(nombre)}</span>`;
+};
+
+async function cargarBase() {
+  const [tarjetas, personas] = await Promise.all([api('/api/tarjetas'), api('/api/personas')]);
+  estado.tarjeta = tarjetas.find((t) => t.estado === 'activa') || tarjetas[0] || null;
+  estado.personas = personas;
+}
+
+// ---------- Sesión ----------
+function mostrarLogin() {
+  estado.usuario = null;
+  $('#vista-app').hidden = true;
+  $('#vista-login').hidden = false;
+}
+
+async function iniciarApp() {
+  try {
+    estado.usuario = await api('/api/auth/me');
+  } catch {
+    return mostrarLogin();
+  }
+  $('#vista-login').hidden = true;
+  $('#vista-app').hidden = false;
+  $('#perfil-avatar').textContent = iniciales(estado.usuario.nombre);
+  $('#perfil-nombre').textContent = estado.usuario.nombre;
+  $('#perfil-rol').textContent = esAdmin() ? 'Administrador' : 'Usuario';
+  $$('[data-admin]').forEach((el) => { el.hidden = !esAdmin(); });
+  llenarSelectoresMes();
+  navegar();
+}
+
+$('#form-login').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const datos = datosForm(form);
+  if (!datos.correo || !datos.password) {
+    $('#login-error').textContent = 'Escribe tu correo y contraseña';
+    return;
+  }
+  await conError($('#login-error'), async () => {
+    await api('/api/auth/login', { method: 'POST', body: { ...datos, recordar: form.recordar.checked } });
+    form.password.value = '';
+    await iniciarApp();
+  }, form.querySelector('[type=submit]'));
+});
+
+$('#btn-ver-password').addEventListener('click', (e) => {
+  const input = $('#form-login [name=password]');
+  input.type = input.type === 'password' ? 'text' : 'password';
+  e.currentTarget.setAttribute('aria-label', input.type === 'password' ? 'Mostrar contraseña' : 'Ocultar contraseña');
+});
+
+$('#link-olvido').addEventListener('click', (e) => {
+  e.preventDefault();
+  $('#login-info').hidden = false;
+});
+
+$('#btn-salir').addEventListener('click', async () => {
+  await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  location.hash = '';
+  mostrarLogin();
+});
+
+$('#btn-menu').addEventListener('click', () => $('#lateral').classList.toggle('abierto'));
+
+// ---------- Navegación (#vista o #gasto/12) ----------
+const vistas = {
+  inicio: cargarInicio,
+  registrar: abrirRegistro,
+  gastos: cargarGastos,
+  gasto: cargarDetalle,
+  personas: cargarPersonas,
+  reportes: cargarReportes,
+  configuracion: cargarConfiguracion,
+};
+
+function navegar() {
+  if (!estado.usuario) return;
+  const [nombre, param] = location.hash.slice(1).split('/');
+  const vista = vistas[nombre] ? nombre : 'inicio';
+  const seccion = vista === 'gasto' ? 'detalle' : vista;
+  $$('.principal > section').forEach((s) => { s.hidden = s.dataset.vista !== seccion; });
+  $$('#menu a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === (vista === 'gasto' ? 'gastos' : vista)));
+  $('#lateral').classList.remove('abierto');
+  window.scrollTo(0, 0);
+  conError(null, () => vistas[vista](param));
+}
+window.addEventListener('hashchange', navegar);
+
+// Selector de mes compartido por Inicio, Mis gastos, Personas y Reportes
+function llenarSelectoresMes() {
+  const meses = [];
+  const d = new Date();
+  for (let i = 0; i < 12; i++) {
+    meses.push(new Date(d.getFullYear(), d.getMonth() - i, 1).toLocaleDateString('en-CA').slice(0, 7));
+  }
+  if (!meses.includes(estado.mes)) meses.unshift(estado.mes);
+  $$('.sel-mes').forEach((sel) => {
+    sel.innerHTML = meses.map((m) => `<option value="${m}">${nombreMes(m)}</option>`).join('');
+    sel.value = estado.mes;
+  });
+}
+$$('.sel-mes').forEach((sel) => sel.addEventListener('change', () => {
+  estado.mes = sel.value;
+  $$('.sel-mes').forEach((s) => { s.value = estado.mes; });
+  navegar();
+}));
+
+// ---------- Inicio ----------
+async function cargarInicio() {
+  await cargarBase();
+  const t = estado.tarjeta;
+  $('#inicio-contenido').hidden = !t;
+  $('#inicio-sin-tarjeta').hidden = !!t;
+  if (!t) {
+    $('#inicio-sin-tarjeta').innerHTML = `${ic('card')}<h2>Todavía no hay una tarjeta configurada</h2>` +
+      (esAdmin() ? '<a class="btn btn-primario" href="#configuracion">Configurar tarjeta</a>' : '<p>Pide a la persona administradora que la configure.</p>');
+    return;
+  }
+  const gastado = t.limite - t.disponible;
+  const usado = t.limite > 0 ? (gastado / t.limite) * 100 : 0;
+  $('#res-limite').textContent = dinero(t.limite);
+  $('#res-gastado').textContent = dinero(gastado);
+  $('#res-gastado-pct').textContent = `${pct(usado)} del límite`;
+  $('#res-disponible').textContent = dinero(t.disponible);
+  $('#res-disponible-pct').textContent = `${pct(100 - usado)} restante`;
+  $('#res-barra').style.width = `${Math.min(100, Math.max(0, usado))}%`;
+  $('#res-barra').parentElement.classList.toggle('alto', usado > 85);
+  $('#res-barra').parentElement.setAttribute('aria-valuenow', Math.round(usado));
+
+  const reporte = await api(`/api/reportes/resumen?mes=${estado.mes}`);
+  $('#inicio-mes-label').textContent = `· ${nombreMes(estado.mes)}`;
+  $('#inicio-personas').innerHTML = reporte.por_persona.length
+    ? reporte.por_persona.map((p) => `
+      <div class="panel persona-card">
+        ${avatarPersona(p.id)}
+        <div>
+          <p class="nombre">${esc(p.nombre)}</p>
+          <p class="cifra">${dinero(p.total)}</p>
+          <small>${p.cantidad} ${p.cantidad === 1 ? 'compra' : 'compras'}</small>
+        </div>
+      </div>`).join('')
+    : `<div class="panel vacio-grande">Aún no hay personas registradas. ${esAdmin() ? '<a href="#personas">Agregar personas</a>' : ''}</div>`;
+}
+
+// ---------- Registrar gasto (asistente de 3 pasos) ----------
+const registro = { paso: 1, archivo: null, vistaPrevia: null, texto: '', ocrOk: false, datos: {} };
+
+function irPaso(n) {
+  registro.paso = n;
+  $$('.registro .paso').forEach((p) => { p.hidden = Number(p.dataset.paso) !== n; });
+  $('#pasos').hidden = n === 4;
+  $$('#pasos li').forEach((li) => {
+    const num = Number(li.dataset.paso);
+    li.classList.toggle('activo', num === n);
+    li.classList.toggle('hecho', num < n);
+    $('.paso-num', li).innerHTML = num < n ? ic('check') : num;
+  });
+}
+
+function marcoImagen(src, conZoom) {
+  if (!src) return `<div class="sin-imagen">${ic('receipt')}<span>Gasto sin factura</span></div>`;
+  return `<img src="${esc(src)}" alt="Factura" data-zoom="${esc(src)}">` +
+    (conZoom ? `<button type="button" class="btn-icono btn-zoom" data-zoom="${esc(src)}" aria-label="Ampliar">${ic('zoom')}</button>` : '');
+}
+
+function reiniciarRegistro() {
+  if (registro.vistaPrevia) URL.revokeObjectURL(registro.vistaPrevia);
+  Object.assign(registro, { paso: 1, archivo: null, vistaPrevia: null, texto: '', ocrOk: false, datos: {} });
+  $('#form-datos').reset();
+  $('#form-confirmar').reset();
+  $('#input-factura').value = '';
+  $('#zona-contenido').hidden = false;
+  $('#zona-cargando').hidden = true;
+  ['#subida-error', '#datos-error', '#confirmar-error'].forEach((s) => { $(s).textContent = ''; });
+  irPaso(1);
+}
+
+async function abrirRegistro() {
+  reiniciarRegistro();
+  await cargarBase();
+  if (!estado.tarjeta || estado.tarjeta.estado !== 'activa') {
+    $('#subida-error').textContent = estado.tarjeta ? 'La tarjeta está bloqueada.' : 'Primero hay que configurar la tarjeta en Configuración.';
+  }
+}
+
+async function procesarArchivo(archivo) {
+  $('#subida-error').textContent = '';
+  if (!archivo) return;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(archivo.type)) {
+    $('#subida-error').textContent = 'Formato no admitido. Usa JPG, PNG o WEBP.';
+    return;
+  }
+  if (archivo.size > 8 * 1024 * 1024) {
+    $('#subida-error').textContent = 'La imagen pesa más de 8 MB.';
+    return;
+  }
+  $('#zona-contenido').hidden = true;
+  $('#zona-cargando').hidden = false;
+  const fd = new FormData();
+  fd.append('imagen', archivo);
+  try {
+    const r = await api('/api/facturas/ocr', { method: 'POST', body: fd });
+    if (registro.vistaPrevia) URL.revokeObjectURL(registro.vistaPrevia);
+    Object.assign(registro, { archivo: r.archivo, vistaPrevia: URL.createObjectURL(archivo), texto: r.texto, ocrOk: r.ok });
+    const form = $('#form-datos');
+    form.comercio.value = r.comercio || '';
+    form.fecha_compra.value = r.fecha || '';
+    form.monto.value = r.monto ?? '';
+    mostrarPaso2();
+  } catch (err) {
+    $('#subida-error').textContent = err.message;
+  } finally {
+    $('#zona-contenido').hidden = false;
+    $('#zona-cargando').hidden = true;
+    $('#input-factura').value = '';
+  }
+}
+
+function mostrarPaso2() {
+  $('#paso2-imagen').innerHTML = marcoImagen(registro.vistaPrevia, false);
+  $('#btn-cambiar-imagen').innerHTML = `${ic('image')} ${registro.archivo ? 'Cambiar imagen' : 'Subir factura'}`;
+  const form = $('#form-datos');
+  const aviso = $('#aviso-ocr');
+  if (!registro.archivo) {
+    aviso.hidden = true;
+    if (!form.fecha_compra.value) form.fecha_compra.value = hoy();
+  } else {
+    const completo = registro.ocrOk && form.comercio.value && form.fecha_compra.value && form.monto.value;
+    aviso.hidden = false;
+    aviso.className = `aviso ${completo ? 'aviso-ok' : 'aviso-alerta'}`;
+    aviso.innerHTML = completo
+      ? `${ic('check')}<div><b>Información leída automáticamente</b><br>Revisa que los datos sean correctos. Puedes editarlos si es necesario.</div>`
+      : `${ic('alert')}<div><b>No se pudo leer toda la información</b><br>Completa o corrige los campos vacíos mirando la factura.</div>`;
+  }
+  irPaso(2);
+}
+
+const zona = $('#zona-subida');
+$('#input-factura').addEventListener('change', (e) => procesarArchivo(e.target.files[0]));
+zona.addEventListener('dragover', (e) => { e.preventDefault(); zona.classList.add('arrastrando'); });
+zona.addEventListener('dragleave', () => zona.classList.remove('arrastrando'));
+zona.addEventListener('drop', (e) => {
+  e.preventDefault();
+  zona.classList.remove('arrastrando');
+  procesarArchivo(e.dataTransfer.files[0]);
+});
+$('#btn-sin-factura').addEventListener('click', () => {
+  registro.archivo = null;
+  registro.vistaPrevia = null;
+  registro.texto = '';
+  mostrarPaso2();
+});
+$('#btn-cambiar-imagen').addEventListener('click', () => irPaso(1));
+
+$('#form-datos').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const d = datosForm(form);
+  const error = !d.comercio.trim() ? 'Escribe el nombre del comercio'
+    : !d.fecha_compra ? 'Indica la fecha de la compra'
+      : !(Number(d.monto) > 0) ? 'El monto debe ser mayor a 0' : '';
+  $('#datos-error').textContent = error;
+  if (error) return;
+  registro.datos = { comercio: d.comercio.trim(), fecha_compra: d.fecha_compra, monto: Number(d.monto) };
+
+  $('#conf-comercio').textContent = registro.datos.comercio;
+  $('#conf-fecha').textContent = fechaCorta(registro.datos.fecha_compra);
+  $('#conf-monto').textContent = dinero(registro.datos.monto);
+  const activas = estado.personas.filter((p) => p.activo);
+  const sel = $('#conf-persona');
+  const anterior = sel.value;
+  sel.innerHTML = '<option value="">Selecciona…</option>' + activas.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('');
+  sel.value = anterior;
+  $('#confirmar-error').innerHTML = activas.length ? ''
+    : esAdmin() ? 'No hay personas registradas. <a href="#personas">Agrega una</a> primero.' : 'No hay personas registradas. Pide a la persona administradora que agregue una.';
+  $('#paso3-imagen').innerHTML = marcoImagen(registro.vistaPrevia, true);
+  irPaso(3);
+});
+
+$('#btn-anterior').addEventListener('click', () => irPaso(2));
+
+$('#form-confirmar').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const d = datosForm(form);
+  if (!d.persona_id) {
+    $('#confirmar-error').textContent = 'Selecciona a qué persona corresponde el gasto';
+    return;
+  }
+  const cuerpo = {
+    ...registro.datos,
+    tarjeta_id: estado.tarjeta?.id,
+    persona_id: Number(d.persona_id),
+    nota: d.nota,
+    archivo: registro.archivo,
+    texto_ocr: registro.texto,
+  };
+  await conError($('#confirmar-error'), async () => {
+    let r;
+    try {
+      r = await api('/api/gastos', { method: 'POST', body: cuerpo });
+    } catch (err) {
+      if (err.status !== 409) throw err;
+      if (!confirm(`${err.message}. ¿Registrarlo de todas formas?`)) return;
+      r = await api('/api/gastos', { method: 'POST', body: { ...cuerpo, forzar: true } });
+    }
+    $('#exito-monto').textContent = dinero(r.gasto.monto);
+    $('#exito-saldo').textContent = dinero(r.tarjeta.disponible);
+    irPaso(4);
+  }, form.querySelector('[type=submit]'));
+});
+
+$('#btn-otro-gasto').addEventListener('click', abrirRegistro);
+
+// ---------- Mis gastos ----------
+let buscarTimer;
+$('#buscar-gastos').addEventListener('input', () => {
+  clearTimeout(buscarTimer);
+  buscarTimer = setTimeout(() => conError(null, cargarTablaGastos), 250);
+});
+
+async function cargarGastos() {
+  await cargarBase();
+  const chips = [{ id: '', nombre: 'Todos' }, ...estado.personas.filter((p) => p.activo)];
+  if (!chips.some((c) => String(c.id) === estado.filtroPersona)) estado.filtroPersona = '';
+  $('#chips-personas').innerHTML = chips.map((c) => `
+    <button class="chip ${String(c.id) === estado.filtroPersona ? 'activo' : ''}" data-persona="${c.id}">
+      ${c.id ? `<span class="punto" style="background:${colorPersona(c.id)}"></span>` : ''}${esc(c.nombre)}
+    </button>`).join('');
+  await cargarTablaGastos();
+}
+
+async function cargarTablaGastos() {
+  const params = new URLSearchParams({ mes: estado.mes });
+  if (estado.filtroPersona) params.set('persona_id', estado.filtroPersona);
+  const q = $('#buscar-gastos').value.trim();
+  if (q) params.set('q', q);
+  const gastos = await api(`/api/gastos?${params}`);
+  $('#tabla-gastos').innerHTML = gastos.length ? gastos.map((g) => `
+    <tr class="${g.estado === 'anulado' ? 'anulado' : ''}">
+      <td>${fechaCorta(g.fecha_compra)}</td>
+      <td><span class="comercio">${esc(g.comercio)}</span>
+        ${g.estado === 'anulado' ? '<span class="pastilla estado-mal">Anulado</span>' : g.estado === 'pendiente' ? '<span class="pastilla estado-pendiente">Pendiente</span>' : ''}</td>
+      <td class="num">${dinero(g.monto)}</td>
+      <td>${pastillaPersona(g.persona_id, g.persona)}</td>
+      <td>${g.tiene_factura ? `<img class="miniatura" src="${urlFactura(g.id)}" alt="Factura" loading="lazy" data-zoom="${urlFactura(g.id)}">` : '<small>—</small>'}</td>
+      <td><div class="acciones-celda">
+        <a class="btn-icono" href="#gasto/${g.id}" title="Ver detalle" aria-label="Ver detalle">${ic('eye')}</a>
+        ${g.estado !== 'anulado' ? `<button class="btn-icono" data-anular="${g.id}" title="Anular gasto" aria-label="Anular gasto">${ic('ban')}</button>` : ''}
+      </div></td>
+    </tr>`).join('')
+    : `<tr><td colspan="6" class="vacio">No hay gastos en ${nombreMes(estado.mes)}${q ? ' con esa búsqueda' : ''}</td></tr>`;
+}
+
+$('#chips-personas').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-persona]');
+  if (!chip) return;
+  estado.filtroPersona = chip.dataset.persona;
+  $$('#chips-personas .chip').forEach((c) => c.classList.toggle('activo', c === chip));
+  conError(null, cargarTablaGastos);
+});
+
+async function anularGasto(id) {
+  if (!confirm('¿Anular este gasto? Su monto se devolverá al disponible de la tarjeta.')) return false;
+  await api(`/api/gastos/${id}/estado`, { method: 'PATCH', body: { estado: 'anulado' } });
+  toast('Gasto anulado');
+  return true;
+}
+
+$('#tabla-gastos').addEventListener('click', async (e) => {
+  const boton = e.target.closest('[data-anular]');
+  if (boton) await conError(null, async () => { if (await anularGasto(boton.dataset.anular)) await cargarTablaGastos(); });
+});
+
+// ---------- Detalle del gasto ----------
+async function cargarDetalle(id) {
+  await cargarBase();
+  const g = await api(`/api/gastos/${encodeURIComponent(id)}`);
+  $('#detalle-imagen').innerHTML = marcoImagen(g.tiene_factura ? urlFactura(g.id) : null, true);
+  const descargar = $('#detalle-descargar');
+  descargar.hidden = !g.tiene_factura;
+  descargar.href = urlFactura(g.id, true);
+  const estadoTxt = { confirmado: ['estado-ok', 'Confirmado'], pendiente: ['estado-pendiente', 'Pendiente'], anulado: ['estado-mal', 'Anulado'] }[g.estado];
+  $('#detalle-datos').innerHTML = `
+    <dt>Comercio</dt><dd>${esc(g.comercio)}</dd>
+    <dt>Fecha</dt><dd>${fechaCorta(g.fecha_compra)}</dd>
+    <dt>Monto</dt><dd><b>${dinero(g.monto)}</b></dd>
+    <dt>Persona</dt><dd>${pastillaPersona(g.persona_id, g.persona)}</dd>
+    <dt>Estado</dt><dd><span class="pastilla ${estadoTxt[0]}">${estadoTxt[1]}</span></dd>
+    <dt>Registrado por</dt><dd>${esc(g.usuario)}</dd>
+    <dt>Fecha de registro</dt><dd>${fechaHora(g.creado_en)}</dd>
+    <dt>Nota</dt><dd>${g.nota ? esc(g.nota) : '—'}</dd>`;
+  $('#detalle-acciones').innerHTML = g.estado !== 'anulado'
+    ? `<button class="btn btn-peligro" data-anular="${g.id}">${ic('ban')} Anular gasto</button>` : '';
+}
+
+$('#detalle-acciones').addEventListener('click', async (e) => {
+  const boton = e.target.closest('[data-anular]');
+  if (boton) await conError(null, async () => { if (await anularGasto(boton.dataset.anular)) await cargarDetalle(boton.dataset.anular); });
+});
+
+// ---------- Personas ----------
+async function cargarPersonas() {
+  await cargarBase();
+  const reporte = await api(`/api/reportes/resumen?mes=${estado.mes}`);
+  const totales = Object.fromEntries(reporte.por_persona.map((p) => [p.id, p]));
+  $('#lista-personas').innerHTML = estado.personas.length ? estado.personas.map((p) => {
+    const t = totales[p.id] || { total: 0, cantidad: 0 };
+    return `
+      <div class="panel persona-card ${p.activo ? '' : 'inactiva'}">
+        ${avatarPersona(p.id)}
+        <div>
+          <p class="nombre">${esc(p.nombre)} ${p.activo ? '' : '<span class="pastilla pastilla-neutra">Inactiva</span>'}</p>
+          <p class="cifra">${dinero(t.total)}</p>
+          <small>${t.cantidad} ${t.cantidad === 1 ? 'compra' : 'compras'} en ${nombreMes(estado.mes).toLowerCase()}</small>
+        </div>
+        ${esAdmin() ? `<div class="acciones">
+          <button class="btn-icono" data-renombrar="${p.id}" title="Cambiar nombre" aria-label="Cambiar nombre">${ic('pencil')}</button>
+          <button class="btn-icono" data-activar="${p.id}" data-activo="${p.activo}" title="${p.activo ? 'Desactivar' : 'Activar'}" aria-label="${p.activo ? 'Desactivar' : 'Activar'}">${ic(p.activo ? 'ban' : 'check')}</button>
+        </div>` : ''}
+      </div>`;
+  }).join('') : '<div class="panel vacio-grande">Agrega a las personas que usan la tarjeta (por ejemplo: Mamá, Rubén, Tía).</div>';
+}
+
+$('#form-persona').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  await conError($('#persona-error'), async () => {
+    await api('/api/personas', { method: 'POST', body: datosForm(form) });
+    form.reset();
+    await cargarPersonas();
+  }, form.querySelector('[type=submit]'));
+});
+
+$('#lista-personas').addEventListener('click', async (e) => {
+  const renombrar = e.target.closest('[data-renombrar]');
+  const activar = e.target.closest('[data-activar]');
+  if (renombrar) {
+    const persona = estado.personas.find((p) => p.id === Number(renombrar.dataset.renombrar));
+    const nombre = prompt('Nuevo nombre:', persona?.nombre);
+    if (!nombre) return;
+    await conError(null, async () => {
+      await api(`/api/personas/${persona.id}`, { method: 'PATCH', body: { nombre } });
+      await cargarPersonas();
+    });
+  } else if (activar) {
+    await conError(null, async () => {
+      await api(`/api/personas/${activar.dataset.activar}`, { method: 'PATCH', body: { activo: activar.dataset.activo !== '1' } });
+      await cargarPersonas();
+    });
+  }
+});
+
+// ---------- Reportes ----------
+async function cargarReportes() {
+  await cargarBase();
+  const r = await api(`/api/reportes/resumen?mes=${estado.mes}`);
+  const t = estado.tarjeta;
+  $('#rep-titulo-mes').textContent = `· ${nombreMes(estado.mes)}`;
+  $('#rep-total').textContent = dinero(r.total);
+  $('#rep-total-pct').textContent = t?.limite ? `${pct((r.total / t.limite) * 100)} del límite` : '';
+  $('#rep-disponible').textContent = t ? dinero(t.disponible) : '—';
+  $('#rep-disponible-pct').textContent = t?.limite ? `${pct((t.disponible / t.limite) * 100)} restante` : '';
+  $('#rep-compras').textContent = r.cantidad;
+
+  const maximo = Math.max(...r.por_persona.map((p) => p.total), 0);
+  $('#rep-barras').innerHTML = r.por_persona.length ? r.por_persona.map((p) => {
+    const parte = r.total ? (p.total / r.total) * 100 : 0;
+    return `
+      <div class="barra-fila">
+        <span class="nombre">${esc(p.nombre)}</span>
+        <div class="barra-pista" data-tip="${tip(p.nombre, `${dinero(p.total)} · ${p.cantidad} ${p.cantidad === 1 ? 'compra' : 'compras'}`)}">
+          <div class="barra-relleno" style="width:${maximo ? (p.total / maximo) * 100 : 0}%;background:${colorPersona(p.id)}"></div>
+        </div>
+        <span class="num">${dinero(p.total)}</span>
+        <span class="pct">${Math.round(parte)}%</span>
+      </div>`;
+  }).join('') : '<p class="vacio">Sin datos</p>';
+
+  dibujarDona(r);
+
+  $('#rep-comercios').innerHTML = r.por_comercio.length
+    ? r.por_comercio.map((c) => `<tr><td>${esc(c.comercio)}</td><td class="num">${c.cantidad}</td><td class="num">${dinero(c.total)}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="vacio">Sin gastos este mes</td></tr>';
+}
+
+function dibujarDona(r) {
+  const conGasto = r.por_persona.filter((p) => p.total > 0);
+  const sinPersona = Math.round((r.total - conGasto.reduce((s, p) => s + p.total, 0)) * 100) / 100;
+  const partes = conGasto.map((p) => ({ id: p.id, nombre: p.nombre, total: p.total, color: colorPersona(p.id) }));
+  if (sinPersona > 0) partes.push({ id: 'otros', nombre: 'Sin asignar', total: sinPersona, color: COLOR_OTROS });
+
+  const R = 90; const r0 = 58; const C = 100;
+  const punto = (ang, radio) => [C + radio * Math.sin(ang), C - radio * Math.cos(ang)];
+  let svg;
+  if (!partes.length) {
+    svg = `<circle cx="${C}" cy="${C}" r="${(R + r0) / 2}" fill="none" stroke="#f0eff6" stroke-width="${R - r0}"/>`;
+  } else if (partes.length === 1) {
+    svg = `<circle cx="${C}" cy="${C}" r="${(R + r0) / 2}" fill="none" stroke="${partes[0].color}" stroke-width="${R - r0}"
+      data-tip="${tip(partes[0].nombre, `${dinero(partes[0].total)} · 100%`)}"/>`;
+  } else {
+    let ang = 0;
+    svg = partes.map((p) => {
+      const barrido = (p.total / r.total) * Math.PI * 2;
+      const [x1, y1] = punto(ang, R); const [x2, y2] = punto(ang + barrido, R);
+      const [x3, y3] = punto(ang + barrido, r0); const [x4, y4] = punto(ang, r0);
+      const grande = barrido > Math.PI ? 1 : 0;
+      ang += barrido;
+      // Borde blanco de 2px entre segmentos
+      return `<path d="M${x1} ${y1}A${R} ${R} 0 ${grande} 1 ${x2} ${y2}L${x3} ${y3}A${r0} ${r0} 0 ${grande} 0 ${x4} ${y4}Z"
+        fill="${p.color}" stroke="#fff" stroke-width="2" data-parte="${p.id}"
+        data-tip="${tip(p.nombre, `${dinero(p.total)} · ${Math.round((p.total / r.total) * 100)}%`)}"/>`;
+    }).join('');
+  }
+  $('#rep-dona').innerHTML = `<svg viewBox="0 0 200 200" role="img" aria-label="Distribución del gasto por persona">${svg}</svg>
+    <div class="dona-centro"><small>Total</small><strong>${dinero(r.total)}</strong></div>`;
+
+  $('#rep-leyenda').innerHTML = (partes.length ? partes : r.por_persona.map((p) => ({ ...p, color: colorPersona(p.id) })))
+    .map((p) => `<li data-parte="${p.id}"><span class="punto" style="background:${p.color}"></span><span>${esc(p.nombre)}</span>
+      <span class="valor">${dinero(p.total)}</span></li>`).join('') || '<li><span></span><span class="valor">Sin datos</span></li>';
+}
+
+// Resalta el segmento de la dona al pasar por la leyenda
+$('#rep-leyenda').addEventListener('mouseover', (e) => {
+  const li = e.target.closest('[data-parte]');
+  $$('#rep-dona path').forEach((p) => p.classList.toggle('foco', li && p.dataset.parte === li.dataset.parte));
+  $('#rep-dona').classList.toggle('con-foco', !!li && !!$(`#rep-dona path[data-parte="${li.dataset.parte}"]`));
+});
+$('#rep-leyenda').addEventListener('mouseleave', () => $('#rep-dona').classList.remove('con-foco'));
+
+$('#btn-pdf').addEventListener('click', () => window.print());
+
+// Tooltip para barras y dona
+const tooltip = $('#tooltip');
+document.addEventListener('mousemove', (e) => {
+  const objetivo = e.target.closest?.('[data-tip]');
+  if (!objetivo) { tooltip.hidden = true; return; }
+  tooltip.innerHTML = objetivo.dataset.tip;
+  tooltip.style.left = `${e.clientX}px`;
+  tooltip.style.top = `${e.clientY}px`;
+  tooltip.hidden = false;
+});
+
+// ---------- Configuración ----------
+async function cargarConfiguracion() {
+  await cargarBase();
+  const form = $('#form-tarjeta');
+  const t = estado.tarjeta;
+  form.nombre.value = t?.nombre ?? '';
+  form.limite.value = t?.limite ?? '';
+  form.saldo_inicial.value = t?.saldo_inicial ?? 0;
+  form.estado.value = t?.estado ?? 'activa';
+  form.querySelector('[type=submit]').textContent = t ? 'Guardar tarjeta' : 'Crear tarjeta';
+  if (esAdmin()) await cargarUsuarios();
+}
+
+$('#form-tarjeta').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  await conError($('#tarjeta-error'), async () => {
+    const d = datosForm(form);
+    if (estado.tarjeta) await api(`/api/tarjetas/${estado.tarjeta.id}`, { method: 'PATCH', body: d });
+    else await api('/api/tarjetas', { method: 'POST', body: d });
+    toast('Tarjeta guardada');
+    await cargarConfiguracion();
+  }, form.querySelector('[type=submit]'));
+});
+
+$('#form-password').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  await conError($('#password-error'), async () => {
+    await api('/api/auth/password', { method: 'PATCH', body: datosForm(form) });
+    form.reset();
+    toast('Contraseña actualizada');
+  }, form.querySelector('[type=submit]'));
+});
+
+async function cargarUsuarios() {
+  const usuarios = await api('/api/usuarios');
+  $('#tabla-usuarios').innerHTML = usuarios.map((u) => `
+    <tr>
+      <td>${esc(u.nombre)}</td>
+      <td>${esc(u.correo)}</td>
+      <td>${u.rol === 'admin' ? 'Administrador' : 'Usuario'}</td>
+      <td><span class="pastilla ${u.activo ? 'estado-ok' : 'estado-mal'}">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
+      <td><div class="acciones-celda">${u.id === estado.usuario.id ? '<small>Tú</small>' : `
+        <button class="btn-icono" data-clave="${u.id}" title="Asignar contraseña nueva" aria-label="Asignar contraseña nueva">${ic('key')}</button>
+        <button class="btn-icono" data-usuario="${u.id}" data-activo="${u.activo}" title="${u.activo ? 'Desactivar' : 'Activar'}" aria-label="${u.activo ? 'Desactivar' : 'Activar'}">${ic(u.activo ? 'ban' : 'check')}</button>`}
+      </div></td>
+    </tr>`).join('');
+}
+
+$('#form-usuario').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  await conError($('#usuario-error'), async () => {
+    await api('/api/usuarios', { method: 'POST', body: datosForm(form) });
+    form.reset();
+    toast('Usuario creado');
+    await cargarUsuarios();
+  }, form.querySelector('[type=submit]'));
+});
+
+$('#tabla-usuarios').addEventListener('click', async (e) => {
+  const clave = e.target.closest('[data-clave]');
+  const toggle = e.target.closest('[data-usuario]');
+  if (clave) {
+    const password = prompt('Contraseña nueva para este usuario (mínimo 6 caracteres):');
+    if (!password) return;
+    await conError(null, async () => {
+      await api(`/api/usuarios/${clave.dataset.clave}`, { method: 'PATCH', body: { password } });
+      toast('Contraseña asignada');
+    });
+  } else if (toggle) {
+    await conError(null, async () => {
+      await api(`/api/usuarios/${toggle.dataset.usuario}`, { method: 'PATCH', body: { activo: toggle.dataset.activo !== '1' } });
+      await cargarUsuarios();
+    });
+  }
+});
+
+// ---------- Visor de imágenes ----------
+const visor = $('#visor');
+document.addEventListener('click', (e) => {
+  const zoom = e.target.closest('[data-zoom]');
+  if (!zoom) return;
+  $('img', visor).src = zoom.dataset.zoom;
+  visor.hidden = false;
+});
+visor.addEventListener('click', () => { visor.hidden = true; });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') visor.hidden = true; });
+
+pintarIconos();
+iniciarApp();
