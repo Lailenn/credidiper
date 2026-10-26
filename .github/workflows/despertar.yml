@@ -1,0 +1,16 @@
+# El plan gratis de Render duerme el servidor tras 15 minutos sin visitas y despertarlo tarda casi un minuto.
+# Esto lo visita cada pocos minutos para que siempre responda al instante (750 h gratis al mes alcanzan).
+name: Mantener despierto el servidor
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  despertar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Visitar /api/salud
+        run: curl --silent --show-error --max-time 90 --retry 2 https://credidiper.onrender.com/api/salud

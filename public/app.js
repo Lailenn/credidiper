@@ -12,12 +12,20 @@ const API_BASE = location.hostname.endsWith('github.io') ? API_PRODUCCION
 
 // Token de sesión: en localStorage si marcó "Recordarme", si no en sessionStorage (se borra al cerrar el navegador)
 const CLAVE_TOKEN = 'credisiman-token';
+const CLAVE_USUARIO = 'credisiman-usuario';
 const sesionGuardada = {
   leer: () => { try { return localStorage.getItem(CLAVE_TOKEN) || sessionStorage.getItem(CLAVE_TOKEN); } catch { return null; } },
   guardar: (token, recordar) => {
     try { (recordar ? localStorage : sessionStorage).setItem(CLAVE_TOKEN, token); } catch { /* sin almacenamiento */ }
   },
-  borrar: () => { try { localStorage.removeItem(CLAVE_TOKEN); sessionStorage.removeItem(CLAVE_TOKEN); } catch { /* nada */ } },
+  borrar: () => {
+    try { for (const clave of [CLAVE_TOKEN, CLAVE_USUARIO]) { localStorage.removeItem(clave); sessionStorage.removeItem(clave); } } catch { /* nada */ }
+  },
+  // Datos del usuario de la última sesión: permiten abrir la app al instante sin esperar al servidor
+  usuario: () => { try { return JSON.parse(localStorage.getItem(CLAVE_USUARIO) || sessionStorage.getItem(CLAVE_USUARIO)); } catch { return null; } },
+  guardarUsuario: (usuario) => {
+    try { (localStorage.getItem(CLAVE_TOKEN) ? localStorage : sessionStorage).setItem(CLAVE_USUARIO, JSON.stringify(usuario)); } catch { /* sin almacenamiento */ }
+  },
 };
 
 // Colores por persona: orden fijo validado (contraste y daltonismo); el color sigue a la persona, no a su posición
@@ -215,27 +223,41 @@ function mostrarLogin() {
 
 async function iniciarApp() {
   if (!sesionGuardada.leer()) return mostrarLogin();
-  // Mientras se comprueba la sesión se muestra la pantalla de carga (si el servidor de Render
-  // estaba dormido, esto puede tardar cerca de un minuto)
+  // Si ya hubo sesión en este navegador, la app se abre al instante y la sesión se comprueba por detrás
+  const guardado = sesionGuardada.usuario();
+  if (guardado) {
+    mostrarApp(guardado);
+    api('/api/auth/me').then((usuario) => {
+      sesionGuardada.guardarUsuario(usuario);
+      if (usuario.nombre !== guardado.nombre || usuario.rol !== guardado.rol) mostrarApp(usuario);
+    }).catch(() => {}); // un 401 ya lleva al login dentro de api()
+    return;
+  }
+  // Primera vez: pantalla de carga mientras se comprueba la sesión (si el servidor dormía, tarda)
   $('#vista-cargando').hidden = false;
   const aviso = setTimeout(() => {
     $('#cargando-texto').textContent = 'Conectando con el servidor… Si estuvo un rato sin uso, puede tardar hasta un minuto en despertar.';
   }, 3000);
   try {
-    estado.usuario = await api('/api/auth/me');
+    const usuario = await api('/api/auth/me');
+    sesionGuardada.guardarUsuario(usuario);
+    mostrarApp(usuario);
   } catch (err) {
     // Sin conexión no se borra la sesión: solo se muestra el login con el aviso
     mostrarLogin();
     if (err.status !== 401) $('#login-error').textContent = err.message;
-    return;
   } finally {
     clearTimeout(aviso);
   }
+}
+
+function mostrarApp(usuario) {
+  estado.usuario = usuario;
   $('#vista-cargando').hidden = true;
   $('#vista-login').hidden = true;
   $('#vista-app').hidden = false;
-  $('#perfil-avatar').textContent = iniciales(estado.usuario.nombre);
-  $('#perfil-nombre').textContent = estado.usuario.nombre;
+  $('#perfil-avatar').textContent = iniciales(usuario.nombre);
+  $('#perfil-nombre').textContent = usuario.nombre;
   $('#perfil-rol').textContent = esAdmin() ? 'Administrador' : 'Usuario';
   $$('[data-admin]').forEach((el) => { el.hidden = !esAdmin(); });
   llenarSelectoresMes();
