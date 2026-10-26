@@ -531,6 +531,37 @@ label { display: flex; flex-direction: column; gap: 6px; font-size: .88rem; colo
 }
 .tooltip b { display: block; }
 
+/* ---------- Personas y cobros ---------- */
+.resumen-deudas { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; flex-wrap: wrap; margin-bottom: 8px; }
+.resumen-deudas .fila-form { margin: 0; grid-template-columns: minmax(200px, 300px) auto; }
+.deudas-grid { margin-top: 10px; }
+.deuda-card { display: flex; flex-direction: column; gap: 14px; text-decoration: none !important; color: inherit; transition: transform .15s, box-shadow .15s; }
+.deuda-card:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(31, 29, 61, .1); }
+.deuda-card .arriba { display: flex; align-items: center; gap: 12px; }
+.deuda-card .nombre { font-weight: 700; }
+.deuda-card .cifra { color: var(--tinta); font-size: 1.5rem; }
+.deuda-card .cifra.al-dia { color: var(--verde); }
+.deuda-card .detalle { display: flex; justify-content: space-between; gap: 8px; font-size: .82rem; color: var(--tenue); border-top: 1px solid var(--linea); padding-top: 10px; }
+.deuda-card.inactiva { opacity: .6; }
+.stat.destacado { background: linear-gradient(135deg, var(--marca) 0%, #7a5cf0 100%); border: 0; color: #fff; }
+.stat.destacado .etiqueta, .stat.destacado .cifra { color: #fff; }
+.stat.destacado .stat-icono { background: rgba(255, 255, 255, .2); color: #fff; }
+.persona-grid { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 18px; align-items: start; }
+.movimientos { list-style: none; margin: 0; padding: 0; }
+.movimientos li { display: grid; grid-template-columns: 40px 1fr auto auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--linea); }
+.movimientos li:last-child { border-bottom: 0; }
+.mov-icono { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; }
+.mov-icono.gasto { background: var(--naranja-50); color: var(--naranja); }
+.mov-icono.pago { background: var(--verde-50); color: var(--verde); }
+.mov-texto { min-width: 0; }
+.mov-texto strong { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mov-texto small { display: block; }
+.mov-monto { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mov-monto.gasto { color: var(--tinta); }
+.mov-monto.pago { color: var(--verde); }
+.movimientos .vacio { border: 0; display: block; }
+@media (max-width: 1080px) { .persona-grid { grid-template-columns: 1fr; } }
+
 /* ---------- Configuración ---------- */
 .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-bottom: 18px; }
 .form-vertical { display: flex; flex-direction: column; gap: 14px; }

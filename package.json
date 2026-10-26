@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env --dns-result-order=ipv4first src/server.js",
     "dev": "node --env-file-if-exists=.env --dns-result-order=ipv4first --watch src/server.js",
-    "migrar": "node --env-file-if-exists=.env --dns-result-order=ipv4first scripts/migrar.js"
+    "migrar": "node --env-file-if-exists=.env --dns-result-order=ipv4first scripts/migrar.js",
+    "clave": "node --env-file-if-exists=.env --dns-result-order=ipv4first scripts/clave.js"
   },
   "repository": {
     "type": "git",

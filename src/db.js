@@ -99,6 +99,17 @@ export async function iniciarBase() {
       fecha_subida TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Depósitos que cada persona hace para pagar lo que gastó con la tarjeta
+    CREATE TABLE IF NOT EXISTS pagos (
+      id         INTEGER PRIMARY KEY,
+      persona_id INTEGER NOT NULL REFERENCES personas(id),
+      monto      REAL NOT NULL CHECK (monto > 0),
+      fecha      TEXT NOT NULL,
+      referencia TEXT,
+      nota       TEXT,
+      creado_en  TEXT
+    );
+
     -- Imágenes subidas en el paso 1 que todavía no se han guardado como gasto
     CREATE TABLE IF NOT EXISTS subidas (
       id        TEXT PRIMARY KEY,
@@ -135,6 +146,8 @@ export async function iniciarBase() {
     CREATE INDEX IF NOT EXISTS idx_gastos_tarjeta ON gastos (tarjeta_id, estado);
     CREATE INDEX IF NOT EXISTS idx_gastos_usuario ON gastos (usuario_id);
     CREATE INDEX IF NOT EXISTS idx_gastos_fecha ON gastos (fecha_compra);
+    CREATE INDEX IF NOT EXISTS idx_gastos_persona ON gastos (persona_id, estado);
+    CREATE INDEX IF NOT EXISTS idx_pagos_persona ON pagos (persona_id);
   `);
 
   // Limpieza: sesiones vencidas y subidas abandonadas (más de un día)

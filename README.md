@@ -68,10 +68,15 @@ En el plan gratis, Render duerme el servidor tras 15 minutos sin uso; la primera
 | Registrar y anular gastos | todos | solo los suyos |
 | Reportes | de todos | solo los suyos |
 | Configurar la tarjeta (límite, estado) | ✔ | |
-| Agregar y desactivar personas | ✔ | |
-| Crear usuarios, desactivarlos, asignarles contraseña | ✔ | |
+| Personas, depósitos y cobros | ✔ | |
 
-Los **usuarios** son quienes inician sesión; las **personas** (Mamá, Rubén…) son a quienes se les atribuye cada gasto.
+La app la usa **una sola cuenta** (la dueña de la tarjeta). Las **personas** (Mamá, Rubén…) son a quienes se les presta la tarjeta: cada gasto se le carga a una persona y ella lo va pagando con **depósitos**.
+
+```
+Te debe = gastos confirmados de la persona − depósitos que ha hecho
+```
+
+Si se olvida la contraseña: `npm run clave -- NuevaContraseña` desde la carpeta del proyecto.
 
 ## Registro de un gasto
 

@@ -323,9 +323,12 @@ const vistas = {
   gastos: cargarGastos,
   gasto: cargarDetalle,
   personas: cargarPersonas,
+  persona: cargarPersona,
   reportes: cargarReportes,
   configuracion: cargarConfiguracion,
 };
+// Vistas de detalle: qué opción del menú queda marcada
+const MENU_DE = { gasto: 'gastos', persona: 'personas' };
 
 function navegar() {
   if (!estado.usuario) return;
@@ -334,7 +337,7 @@ function navegar() {
   if (!$('#escaner').hidden) cerrarEscaner();
   const seccion = vista === 'gasto' ? 'detalle' : vista;
   $$('.principal > section').forEach((s) => { s.hidden = s.dataset.vista !== seccion; });
-  $$('#menu a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === (vista === 'gasto' ? 'gastos' : vista)));
+  $$('#menu a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === (MENU_DE[vista] || vista)));
   window.scrollTo(0, 0);
   conError(null, () => vistas[vista](param));
 }
@@ -381,19 +384,29 @@ async function cargarInicio() {
   $('#res-barra').parentElement.classList.toggle('alto', usado > 85);
   $('#res-barra').parentElement.setAttribute('aria-valuenow', Math.round(usado));
 
-  const reporte = await api(`/api/reportes/resumen?mes=${estado.mes}`);
-  $('#inicio-mes-label').textContent = `· ${nombreMes(estado.mes)}`;
-  $('#inicio-personas').innerHTML = reporte.por_persona.length
-    ? reporte.por_persona.map((p) => `
-      <div class="panel persona-card">
-        ${avatarPersona(p.id)}
-        <div>
-          <p class="nombre">${esc(p.nombre)}</p>
-          <p class="cifra">${dinero(p.total)}</p>
-          <small>${p.cantidad} ${p.cantidad === 1 ? 'compra' : 'compras'}</small>
+  pintarDeudas($('#inicio-personas'), $('#inicio-total-deben'));
+}
+
+// Tarjetas con lo que debe cada persona (se usan en Inicio y en Personas)
+function pintarDeudas(contenedor, totalEl) {
+  const visibles = estado.personas.filter((p) => p.activo || p.saldo > 0);
+  const total = visibles.reduce((s, p) => s + Math.max(0, p.saldo), 0);
+  if (totalEl) totalEl.textContent = totalEl.id === 'total-deben' ? dinero(total) : `· Total ${dinero(total)}`;
+  contenedor.innerHTML = visibles.length ? visibles
+    .sort((a, b) => b.saldo - a.saldo || a.nombre.localeCompare(b.nombre))
+    .map((p) => `
+      <a class="panel deuda-card ${p.activo ? '' : 'inactiva'}" href="#persona/${p.id}">
+        <div class="arriba">
+          ${avatarPersona(p.id)}
+          <div>
+            <p class="nombre">${esc(p.nombre)}</p>
+            <small>${p.saldo > 0 ? 'Te debe' : p.saldo < 0 ? 'Saldo a su favor' : 'Al día'}</small>
+          </div>
         </div>
-      </div>`).join('')
-    : `<div class="panel vacio-grande">Aún no hay personas registradas. ${esAdmin() ? '<a href="#personas">Agregar personas</a>' : ''}</div>`;
+        <p class="cifra ${p.saldo <= 0 ? 'al-dia' : ''}">${dinero(Math.abs(p.saldo))}</p>
+        <div class="detalle"><span>Gastó ${dinero(p.gastado)}</span><span>Depositó ${dinero(p.pagado)}</span></div>
+      </a>`).join('')
+    : '<div class="panel vacio-grande">Aún no hay personas. Agrégalas en <a href="#personas">Personas</a> para llevar la cuenta de lo que te deben.</div>';
 }
 
 // ---------- Registrar gasto (asistente de 3 pasos) ----------
@@ -888,7 +901,6 @@ async function cargarDetalle(id) {
     <dt>Monto</dt><dd><b>${dinero(g.monto)}</b></dd>
     <dt>Persona</dt><dd>${pastillaPersona(g.persona_id, g.persona)}</dd>
     <dt>Estado</dt><dd><span class="pastilla ${estadoTxt[0]}">${estadoTxt[1]}</span></dd>
-    <dt>Registrado por</dt><dd>${esc(g.usuario)}</dd>
     <dt>Fecha de registro</dt><dd>${fechaHora(g.creado_en)}</dd>
     <dt>Nota</dt><dd>${g.nota ? esc(g.nota) : '—'}</dd>`;
   // Productos: se vuelven a sacar del texto que leyó el OCR al registrar la factura
@@ -907,27 +919,10 @@ $('#detalle-acciones').addEventListener('click', async (e) => {
   if (boton) await conError(null, async () => { if (await anularGasto(boton.dataset.anular)) await cargarDetalle(boton.dataset.anular); });
 });
 
-// ---------- Personas ----------
+// ---------- Personas: lo que te debe cada una ----------
 async function cargarPersonas() {
   await cargarBase();
-  const reporte = await api(`/api/reportes/resumen?mes=${estado.mes}`);
-  const totales = Object.fromEntries(reporte.por_persona.map((p) => [p.id, p]));
-  $('#lista-personas').innerHTML = estado.personas.length ? estado.personas.map((p) => {
-    const t = totales[p.id] || { total: 0, cantidad: 0 };
-    return `
-      <div class="panel persona-card ${p.activo ? '' : 'inactiva'}">
-        ${avatarPersona(p.id)}
-        <div>
-          <p class="nombre">${esc(p.nombre)} ${p.activo ? '' : '<span class="pastilla pastilla-neutra">Inactiva</span>'}</p>
-          <p class="cifra">${dinero(t.total)}</p>
-          <small>${t.cantidad} ${t.cantidad === 1 ? 'compra' : 'compras'} en ${nombreMes(estado.mes).toLowerCase()}</small>
-        </div>
-        ${esAdmin() ? `<div class="acciones">
-          <button class="btn-icono" data-renombrar="${p.id}" title="Cambiar nombre" aria-label="Cambiar nombre">${ic('pencil')}</button>
-          <button class="btn-icono" data-activar="${p.id}" data-activo="${p.activo}" title="${p.activo ? 'Desactivar' : 'Activar'}" aria-label="${p.activo ? 'Desactivar' : 'Activar'}">${ic(p.activo ? 'ban' : 'check')}</button>
-        </div>` : ''}
-      </div>`;
-  }).join('') : '<div class="panel vacio-grande">Agrega a las personas que usan la tarjeta (por ejemplo: Mamá, Rubén, Tía).</div>';
+  pintarDeudas($('#lista-personas'), $('#total-deben'));
 }
 
 $('#form-persona').addEventListener('submit', async (e) => {
@@ -940,23 +935,89 @@ $('#form-persona').addEventListener('submit', async (e) => {
   }, form.querySelector('[type=submit]'));
 });
 
-$('#lista-personas').addEventListener('click', async (e) => {
-  const renombrar = e.target.closest('[data-renombrar]');
-  const activar = e.target.closest('[data-activar]');
-  if (renombrar) {
-    const persona = estado.personas.find((p) => p.id === Number(renombrar.dataset.renombrar));
-    const nombre = prompt('Nuevo nombre:', persona?.nombre);
-    if (!nombre) return;
-    await conError(null, async () => {
-      await api(`/api/personas/${persona.id}`, { method: 'PATCH', body: { nombre } });
-      await cargarPersonas();
-    });
-  } else if (activar) {
-    await conError(null, async () => {
-      await api(`/api/personas/${activar.dataset.activar}`, { method: 'PATCH', body: { activo: activar.dataset.activo !== '1' } });
-      await cargarPersonas();
-    });
+// ---------- Cuenta de una persona: depósitos y movimientos ----------
+let personaActual = null;
+
+async function cargarPersona(id) {
+  const [persona, movimientos] = await Promise.all([
+    api(`/api/personas/${encodeURIComponent(id)}`),
+    api(`/api/personas/${encodeURIComponent(id)}/movimientos`),
+  ]);
+  await cargarBase();
+  personaActual = persona;
+  $('#persona-nombre').textContent = persona.nombre;
+  $('#persona-gastado').textContent = dinero(persona.gastado);
+  $('#persona-pagado').textContent = dinero(persona.pagado);
+  $('#persona-ultimo-pago').textContent = persona.ultimo_pago ? `Último depósito: ${fechaCorta(persona.ultimo_pago)}` : 'Aún no ha depositado';
+  $('#persona-saldo-etiqueta').textContent = persona.saldo > 0 ? 'Te debe' : persona.saldo < 0 ? 'Saldo a su favor' : 'Está al día';
+  $('#persona-saldo').textContent = dinero(Math.abs(persona.saldo));
+  $('#btn-activar-persona').innerHTML = persona.activo ? `${ic('ban')} Desactivar` : `${ic('check')} Activar`;
+
+  const form = $('#form-pago');
+  form.reset();
+  form.fecha.value = hoy();
+  $('#pago-error').textContent = '';
+
+  $('#persona-movimientos').innerHTML = movimientos.length ? movimientos.map((m) => `
+    <li>
+      <span class="mov-icono ${m.tipo}">${ic(m.tipo === 'gasto' ? 'receipt' : 'check')}</span>
+      <span class="mov-texto">
+        <strong>${m.tipo === 'gasto' ? esc(m.descripcion) : esc(m.descripcion)}</strong>
+        <small>${fechaCorta(m.fecha)}${m.nota ? ` · ${esc(m.nota)}` : ''}</small>
+      </span>
+      <span class="mov-monto ${m.tipo}">${m.tipo === 'gasto' ? '+' : '−'} ${dinero(m.monto)}</span>
+      ${m.tipo === 'gasto'
+        ? `<a class="btn-icono" href="#gasto/${m.id}" title="Ver gasto" aria-label="Ver gasto">${ic('eye')}</a>`
+        : `<button class="btn-icono" data-borrar-pago="${m.id}" title="Borrar depósito" aria-label="Borrar depósito">${ic('x')}</button>`}
+    </li>`).join('')
+    : '<li class="vacio">Todavía no hay compras ni depósitos de esta persona.</li>';
+}
+
+$('#form-pago').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const d = datosForm(form);
+  if (!(Number(d.monto) > 0)) {
+    $('#pago-error').textContent = 'Escribe el monto que te depositó';
+    return;
   }
+  if (personaActual && Number(d.monto) > personaActual.saldo + 0.001
+    && !confirm(`El depósito (${dinero(d.monto)}) es mayor a lo que te debe (${dinero(Math.max(0, personaActual.saldo))}). La diferencia quedará como saldo a su favor. ¿Guardarlo igual?`)) {
+    return;
+  }
+  await conError($('#pago-error'), async () => {
+    await api(`/api/personas/${personaActual.id}/pagos`, { method: 'POST', body: d });
+    toast('Depósito registrado');
+    await cargarPersona(personaActual.id);
+  }, form.querySelector('[type=submit]'));
+});
+
+$('#persona-movimientos').addEventListener('click', async (e) => {
+  const boton = e.target.closest('[data-borrar-pago]');
+  if (!boton || !confirm('¿Borrar este depósito? Se volverá a sumar a lo que te debe.')) return;
+  await conError(null, async () => {
+    await api(`/api/personas/${personaActual.id}/pagos/${boton.dataset.borrarPago}`, { method: 'DELETE' });
+    toast('Depósito borrado');
+    await cargarPersona(personaActual.id);
+  });
+});
+
+$('#btn-renombrar-persona').addEventListener('click', async () => {
+  const nombre = prompt('Nuevo nombre:', personaActual?.nombre);
+  if (!nombre?.trim()) return;
+  await conError(null, async () => {
+    await api(`/api/personas/${personaActual.id}`, { method: 'PATCH', body: { nombre } });
+    await cargarPersona(personaActual.id);
+  });
+});
+
+$('#btn-activar-persona').addEventListener('click', async () => {
+  const desactivar = Boolean(personaActual.activo);
+  if (desactivar && !confirm('Al desactivarla ya no aparecerá al registrar gastos. Su cuenta y movimientos se conservan. ¿Desactivar?')) return;
+  await conError(null, async () => {
+    await api(`/api/personas/${personaActual.id}`, { method: 'PATCH', body: { activo: !desactivar } });
+    await cargarPersona(personaActual.id);
+  });
 });
 
 // ---------- Reportes ----------
@@ -1059,7 +1120,6 @@ async function cargarConfiguracion() {
   form.saldo_inicial.value = t?.saldo_inicial ?? 0;
   form.estado.value = t?.estado ?? 'activa';
   form.querySelector('[type=submit]').textContent = t ? 'Guardar tarjeta' : 'Crear tarjeta';
-  if (esAdmin()) await cargarUsuarios();
 }
 
 $('#form-tarjeta').addEventListener('submit', async (e) => {
@@ -1082,50 +1142,6 @@ $('#form-password').addEventListener('submit', async (e) => {
     form.reset();
     toast('Contraseña actualizada');
   }, form.querySelector('[type=submit]'));
-});
-
-async function cargarUsuarios() {
-  const usuarios = await api('/api/usuarios');
-  $('#tabla-usuarios').innerHTML = usuarios.map((u) => `
-    <tr>
-      <td>${esc(u.nombre)}</td>
-      <td>${esc(u.correo)}</td>
-      <td>${u.rol === 'admin' ? 'Administrador' : 'Usuario'}</td>
-      <td><span class="pastilla ${u.activo ? 'estado-ok' : 'estado-mal'}">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
-      <td><div class="acciones-celda">${u.id === estado.usuario.id ? '<small>Tú</small>' : `
-        <button class="btn-icono" data-clave="${u.id}" title="Asignar contraseña nueva" aria-label="Asignar contraseña nueva">${ic('key')}</button>
-        <button class="btn-icono" data-usuario="${u.id}" data-activo="${u.activo}" title="${u.activo ? 'Desactivar' : 'Activar'}" aria-label="${u.activo ? 'Desactivar' : 'Activar'}">${ic(u.activo ? 'ban' : 'check')}</button>`}
-      </div></td>
-    </tr>`).join('');
-}
-
-$('#form-usuario').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  await conError($('#usuario-error'), async () => {
-    await api('/api/usuarios', { method: 'POST', body: datosForm(form) });
-    form.reset();
-    toast('Usuario creado');
-    await cargarUsuarios();
-  }, form.querySelector('[type=submit]'));
-});
-
-$('#tabla-usuarios').addEventListener('click', async (e) => {
-  const clave = e.target.closest('[data-clave]');
-  const toggle = e.target.closest('[data-usuario]');
-  if (clave) {
-    const password = prompt('Contraseña nueva para este usuario (mínimo 6 caracteres):');
-    if (!password) return;
-    await conError(null, async () => {
-      await api(`/api/usuarios/${clave.dataset.clave}`, { method: 'PATCH', body: { password } });
-      toast('Contraseña asignada');
-    });
-  } else if (toggle) {
-    await conError(null, async () => {
-      await api(`/api/usuarios/${toggle.dataset.usuario}`, { method: 'PATCH', body: { activo: toggle.dataset.activo !== '1' } });
-      await cargarUsuarios();
-    });
-  }
 });
 
 // ---------- Visor de imágenes ----------

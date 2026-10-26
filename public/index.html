@@ -45,7 +45,7 @@
       </div>
       <button type="submit" class="btn btn-primario btn-bloque">Iniciar sesión</button>
       <p class="mensaje-error" id="login-error" role="alert"></p>
-      <p class="mensaje-info" id="login-info" hidden>Pide a la persona administradora que te asigne una contraseña nueva desde <b>Configuración → Usuarios</b>.</p>
+      <p class="mensaje-info" id="login-info" hidden>Desde tu computadora, en la carpeta del proyecto, ejecuta <b>npm run clave -- TuNuevaContraseña</b> y vuelve a entrar.</p>
     </form>
   </main>
 
@@ -85,7 +85,6 @@
       <section data-vista="inicio">
         <header class="encabezado">
           <h1>Resumen de la tarjeta</h1>
-          <select class="sel-mes" aria-label="Mes"></select>
         </header>
         <div id="inicio-sin-tarjeta" class="panel vacio-grande" hidden></div>
         <div id="inicio-contenido">
@@ -117,10 +116,10 @@
               <a href="#registrar" class="btn btn-primario"><i data-icon="plus"></i> Registrar nuevo gasto</a>
               <a href="#reportes" class="btn btn-suave"><i data-icon="chart"></i> Ver reportes</a>
               <a href="#gastos" class="btn btn-suave"><i data-icon="list"></i> Ver mis gastos</a>
-              <a href="#personas" class="btn btn-suave"><i data-icon="users"></i> Gestionar personas</a>
+              <a href="#personas" class="btn btn-suave"><i data-icon="users"></i> Cobros y depósitos</a>
             </div>
           </div>
-          <h2 class="titulo-seccion">Gastos por persona <small id="inicio-mes-label"></small></h2>
+          <h2 class="titulo-seccion">Lo que te deben <small id="inicio-total-deben"></small></h2>
           <div class="personas-grid" id="inicio-personas"></div>
         </div>
       </section>
@@ -283,14 +282,53 @@
       <section data-vista="personas" hidden>
         <header class="encabezado">
           <h1>Personas</h1>
-          <select class="sel-mes" aria-label="Mes"></select>
         </header>
-        <form id="form-persona" class="panel fila-form" data-admin novalidate>
-          <label>Nueva persona <input name="nombre" required maxlength="60" placeholder="Ej. Mamá"></label>
-          <button type="submit" class="btn btn-primario"><i data-icon="plus"></i> Agregar</button>
-        </form>
+        <div class="panel resumen-deudas">
+          <div>
+            <p class="etiqueta">En total te deben</p>
+            <p class="cifra-hero" id="total-deben"></p>
+          </div>
+          <form id="form-persona" class="fila-form" novalidate>
+            <label>Agregar persona <input name="nombre" required maxlength="60" placeholder="Ej. Mamá"></label>
+            <button type="submit" class="btn btn-primario"><i data-icon="plus"></i> Agregar</button>
+          </form>
+        </div>
         <p class="mensaje-error" id="persona-error" role="alert"></p>
-        <div class="personas-grid" id="lista-personas"></div>
+        <div class="personas-grid deudas-grid" id="lista-personas"></div>
+      </section>
+
+      <!-- ---------- Cuenta de una persona ---------- -->
+      <section data-vista="persona" hidden>
+        <header class="encabezado">
+          <h1><a href="#personas" class="btn-icono" aria-label="Volver"><i data-icon="back"></i></a> <span id="persona-nombre"></span></h1>
+          <div class="encabezado-controles">
+            <button type="button" class="btn btn-borde" id="btn-renombrar-persona"><i data-icon="pencil"></i> Cambiar nombre</button>
+            <button type="button" class="btn btn-borde" id="btn-activar-persona"></button>
+          </div>
+        </header>
+        <div class="stats">
+          <div class="panel stat"><span class="stat-icono naranja"><i data-icon="receipt"></i></span>
+            <div><p class="etiqueta">Gastó con tu tarjeta</p><p class="cifra" id="persona-gastado"></p></div></div>
+          <div class="panel stat"><span class="stat-icono verde"><i data-icon="check"></i></span>
+            <div><p class="etiqueta">Te ha depositado</p><p class="cifra" id="persona-pagado"></p><small id="persona-ultimo-pago"></small></div></div>
+          <div class="panel stat destacado"><span class="stat-icono morado"><i data-icon="card"></i></span>
+            <div><p class="etiqueta" id="persona-saldo-etiqueta">Te debe</p><p class="cifra" id="persona-saldo"></p></div></div>
+        </div>
+        <div class="persona-grid">
+          <form id="form-pago" class="panel form-vertical" novalidate>
+            <h2>Registrar depósito</h2>
+            <label>Monto depositado <span class="campo-prefijo"><span>$</span><input name="monto" type="number" step="0.01" min="0.01" required inputmode="decimal"></span></label>
+            <label>Fecha del depósito <input name="fecha" type="date" required></label>
+            <label>Referencia (opcional) <input name="referencia" maxlength="60" placeholder="Número de comprobante"></label>
+            <label>Nota (opcional) <input name="nota" maxlength="300" placeholder="Ej. Abono de octubre"></label>
+            <p class="mensaje-error" id="pago-error" role="alert"></p>
+            <button type="submit" class="btn btn-primario"><i data-icon="plus"></i> Guardar depósito</button>
+          </form>
+          <div class="panel">
+            <h2>Movimientos</h2>
+            <ul class="movimientos" id="persona-movimientos"></ul>
+          </div>
+        </div>
       </section>
 
       <!-- ---------- Reportes ---------- -->
@@ -355,21 +393,6 @@
           </form>
         </div>
 
-        <div class="panel" data-admin>
-          <h2>Usuarios del sistema</h2>
-          <form id="form-usuario" class="fila-form" novalidate>
-            <label>Nombre <input name="nombre" required></label>
-            <label>Correo <input name="correo" type="email" required></label>
-            <label>Contraseña <input name="password" type="password" minlength="6" required autocomplete="new-password"></label>
-            <label>Rol <select name="rol"><option value="usuario">Usuario</option><option value="admin">Administrador</option></select></label>
-            <button type="submit" class="btn btn-primario"><i data-icon="plus"></i> Crear</button>
-          </form>
-          <p class="mensaje-error" id="usuario-error" role="alert"></p>
-          <table class="tabla">
-            <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th class="der">Acciones</th></tr></thead>
-            <tbody id="tabla-usuarios"></tbody>
-          </table>
-        </div>
       </section>
     </main>
   </div>

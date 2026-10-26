@@ -50,7 +50,7 @@ const facturasConImagen = facturas.map((f) => {
 }).filter(Boolean);
 
 const sentencias = [
-  'DELETE FROM facturas', 'DELETE FROM subidas', 'DELETE FROM gastos', 'DELETE FROM tokens',
+  'DELETE FROM facturas', 'DELETE FROM subidas', 'DELETE FROM pagos', 'DELETE FROM gastos', 'DELETE FROM tokens',
   'DELETE FROM personas', 'DELETE FROM tarjetas', 'DELETE FROM usuarios',
   ...usuarios.map((u) => ({
     sql: 'INSERT INTO usuarios (id, nombre, correo, password_hash, rol_id, activo) VALUES (?, ?, ?, ?, ?, ?)',
