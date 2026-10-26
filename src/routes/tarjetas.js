@@ -12,6 +12,13 @@ const ultimos4 = (valor) => {
   if (!/^\d{4}$/.test(digitos)) throw new v.ErrorValidacion('Escribe solo los últimos 4 dígitos de la tarjeta');
   return digitos;
 };
+const titular = (valor) => String(valor ?? '').trim().replace(/\s+/g, ' ').slice(0, 40) || null;
+const vencimiento = (valor) => {
+  const texto = String(valor ?? '').trim();
+  if (!texto) return null;
+  if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(texto)) throw new v.ErrorValidacion('Escribe el vencimiento como MM/AA, por ejemplo 04/29');
+  return texto;
+};
 
 // Todas las tarjetas con su saldo en una sola consulta
 router.get('/', async (req, res) => {
@@ -40,8 +47,10 @@ router.post('/', requireRol('admin'), async (req, res) => {
   const limite = v.dinero(req.body.limite, 'límite');
   const saldoInicial = v.dinero(req.body.saldo_inicial ?? 0, 'saldo inicial');
   if (saldoInicial > limite) throw new v.ErrorValidacion('El saldo inicial no puede superar el límite');
-  const { id } = await ejecutar('INSERT INTO tarjetas (nombre, limite, saldo_inicial, ultimos4) VALUES (?, ?, ?, ?)',
-    [nombre, limite, saldoInicial, ultimos4(req.body.ultimos4)]);
+  const { id } = await ejecutar(
+    'INSERT INTO tarjetas (nombre, limite, saldo_inicial, ultimos4, titular, vencimiento) VALUES (?, ?, ?, ?, ?, ?)',
+    [nombre, limite, saldoInicial, ultimos4(req.body.ultimos4), titular(req.body.titular), vencimiento(req.body.vencimiento)],
+  );
   res.status(201).json(await saldoTarjeta(id));
 });
 
@@ -54,13 +63,17 @@ router.patch('/:id', requireRol('admin'), async (req, res) => {
   const limite = req.body.limite !== undefined ? v.dinero(req.body.limite, 'límite') : actual.limite;
   const saldoInicial = req.body.saldo_inicial !== undefined ? v.dinero(req.body.saldo_inicial, 'saldo inicial') : actual.saldo_inicial;
   const digitos = req.body.ultimos4 !== undefined ? ultimos4(req.body.ultimos4) : actual.ultimos4;
+  const nombreTitular = req.body.titular !== undefined ? titular(req.body.titular) : actual.titular;
+  const vence = req.body.vencimiento !== undefined ? vencimiento(req.body.vencimiento) : actual.vencimiento;
   const estado = req.body.estado !== undefined ? v.opcion(req.body.estado, 'estado', ['activa', 'bloqueada']) : actual.estado;
   if (limite - saldoInicial < actual.confirmados) {
     throw new v.ErrorValidacion('Con ese límite los gastos confirmados quedarían por encima del crédito');
   }
 
-  await ejecutar('UPDATE tarjetas SET nombre = ?, limite = ?, saldo_inicial = ?, estado = ?, ultimos4 = ? WHERE id = ?',
-    [nombre, limite, saldoInicial, estado, digitos, tarjetaId]);
+  await ejecutar(
+    'UPDATE tarjetas SET nombre = ?, limite = ?, saldo_inicial = ?, estado = ?, ultimos4 = ?, titular = ?, vencimiento = ? WHERE id = ?',
+    [nombre, limite, saldoInicial, estado, digitos, nombreTitular, vence, tarjetaId],
+  );
   res.json(await saldoTarjeta(tarjetaId));
 });
 

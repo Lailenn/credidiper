@@ -1182,29 +1182,54 @@ async function cargarConfiguracion() {
   llenarFormTarjeta();
 }
 
+const volteadas = new Set(); // tarjetas que se están viendo por el reverso
+
 function pintarTarjetas() {
   const nueva = tarjetaEditando === null;
-  $('#tarjetas-fila').innerHTML = estado.tarjetas.map((t) => `
-    <button type="button" class="tarjeta-visual${t.id === tarjetaEditando ? ' elegida' : ''}${t.estado === 'bloqueada' ? ' bloqueada' : ''}"
-      data-tarjeta="${t.id}" aria-pressed="${t.id === tarjetaEditando}" aria-label="Editar ${esc(t.nombre)}">
-      <span class="tv-chip"></span>
-      <svg class="tv-onda" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8a5.5 5.5 0 0 1 0 8M11.5 6a9 9 0 0 1 0 12M15 4a12.5 12.5 0 0 1 0 16"/></svg>
-      <span class="tv-logo"><span><span class="tv-rombo"></span>siman</span><small>CREDISIMAN</small></span>
-      <span class="tv-numero">${t.ultimos4 ? `•••• ${t.ultimos4}` : ''}</span>
-      <span class="tv-marca">VISA</span>
-      ${t.estado === 'bloqueada' ? '<span class="tv-estado">Bloqueada</span>' : ''}
-    </button>`).join('') + `
+  $('#tarjetas-fila').innerHTML = estado.tarjetas.map((t) => {
+    const elegida = t.id === tarjetaEditando;
+    const clases = `tarjeta-visual${elegida ? ' elegida' : ''}${volteadas.has(t.id) ? ' volteada' : ''}${t.estado === 'bloqueada' ? ' bloqueada' : ''}`;
+    // Solo se muestran los últimos 4 dígitos; el número completo y el código de seguridad no se guardan
+    const grupos = ['••••', '••••', '••••', t.ultimos4 || '••••'];
+    return `
+    <button type="button" class="${clases}" data-tarjeta="${t.id}" aria-pressed="${elegida}"
+      aria-label="${esc(t.nombre)}${elegida ? ', toca para darle vuelta' : ''}">
+      <span class="tv-giro">
+        <span class="tv-cara tv-frente">
+          <span class="tv-chip"></span>
+          <svg class="tv-onda" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8a5.5 5.5 0 0 1 0 8M11.5 6a9 9 0 0 1 0 12M15 4a12.5 12.5 0 0 1 0 16"/></svg>
+          <span class="tv-logo"><span><span class="tv-rombo"></span>siman</span><small>CREDISIMAN</small></span>
+          <span class="tv-numero">${t.ultimos4 ? `•••• ${t.ultimos4}` : ''}</span>
+          <span class="tv-marca">VISA</span>
+          ${t.estado === 'bloqueada' ? '<span class="tv-estado">Bloqueada</span>' : `<span class="tv-voltear">${ic('repetir')}</span>`}
+        </span>
+        <span class="tv-cara tv-reverso">
+          <span class="tv-banda"></span>
+          <span class="tv-vertical">Use of this card is subject to the cardmember agreement.</span>
+          <span class="tv-legal">Esta tarjeta es propiedad de CREDISIMAN S.A. de C.V. y su utilización está sujeta a las condiciones del contrato. En caso de extravío, notifica de inmediato al (503) 2298-3777.</span>
+          <span class="tv-firma"></span>
+          <span class="tv-titular">${esc(t.titular || '')}</span>
+          <span class="tv-miembro">MEMBER SINCE</span>
+          <span class="tv-digitos">${grupos.map((g) => `<span>${g}</span>`).join('')}</span>
+          <span class="tv-vence"><small>EXP. DATE</small><b>${esc(t.vencimiento || '--/--')}</b></span>
+        </span>
+      </span>
+    </button>`;
+  }).join('') + `
     <button type="button" class="tarjeta-agregar${nueva ? ' elegida' : ''}" data-tarjeta="nueva" aria-pressed="${nueva}">
       <span class="ta-mas">${ic('plus')}</span>
       <span>${estado.tarjetas.length ? 'Agregar otra tarjeta' : 'Agregar tarjeta'}</span>
     </button>`;
+  $('#ayuda-tarjeta').hidden = !estado.tarjetas.length;
 }
 
 function llenarFormTarjeta() {
   const form = $('#form-tarjeta');
   const t = estado.tarjetas.find((x) => x.id === tarjetaEditando);
   form.nombre.value = t?.nombre ?? '';
+  form.titular.value = t?.titular ?? '';
   form.ultimos4.value = t?.ultimos4 ?? '';
+  form.vencimiento.value = t?.vencimiento ?? '';
   form.limite.value = t?.limite ?? '';
   form.saldo_inicial.value = t?.saldo_inicial ?? 0;
   form.estado.value = t?.estado ?? 'activa';
@@ -1216,10 +1241,23 @@ function llenarFormTarjeta() {
 $('#tarjetas-fila').addEventListener('click', (e) => {
   const boton = e.target.closest('[data-tarjeta]');
   if (!boton) return;
-  tarjetaEditando = boton.dataset.tarjeta === 'nueva' ? null : Number(boton.dataset.tarjeta);
+  const id = boton.dataset.tarjeta === 'nueva' ? null : Number(boton.dataset.tarjeta);
+  // Tocar la tarjeta que ya se está editando la da vuelta (solo cambia la clase para que se vea la animación)
+  if (id !== null && id === tarjetaEditando) {
+    if (!volteadas.delete(id)) volteadas.add(id);
+    boton.classList.toggle('volteada', volteadas.has(id));
+    return;
+  }
+  tarjetaEditando = id;
   pintarTarjetas();
   llenarFormTarjeta();
   if (tarjetaEditando === null) $('#form-tarjeta').nombre.focus();
+});
+
+// Escribe la barra del vencimiento sola: "0429" -> "04/29"
+$('#form-tarjeta').vencimiento.addEventListener('input', (e) => {
+  const d = e.target.value.replace(/\D/g, '').slice(0, 4);
+  e.target.value = d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
 });
 
 $('#form-tarjeta').addEventListener('submit', async (e) => {

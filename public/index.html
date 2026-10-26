@@ -383,10 +383,19 @@
               <div><h2>Tarjeta</h2><p>Configura la información de tu tarjeta de crédito.</p></div>
             </div>
             <div class="tarjetas-fila" id="tarjetas-fila"></div>
+            <p class="ayuda-tarjeta" id="ayuda-tarjeta" hidden>Toca la tarjeta marcada para darle vuelta.</p>
             <label>Nombre <input name="nombre" required maxlength="100" placeholder="Credisiman Visa"></label>
-            <label><span>Últimos 4 dígitos <span class="opcional">(opcional)</span></span>
-              <input name="ultimos4" inputmode="numeric" maxlength="4" pattern="\d{4}" placeholder="1234" autocomplete="off">
+            <label><span>Titular <span class="opcional">(como aparece en el reverso)</span></span>
+              <input name="titular" maxlength="40" placeholder="Nombre y apellido" autocomplete="off">
             </label>
+            <div class="fila-dos">
+              <label><span>Últimos 4 dígitos <span class="opcional">(opcional)</span></span>
+                <input name="ultimos4" inputmode="numeric" maxlength="4" pattern="\d{4}" placeholder="1234" autocomplete="off">
+              </label>
+              <label><span>Vencimiento <span class="opcional">(MM/AA)</span></span>
+                <input name="vencimiento" inputmode="numeric" maxlength="5" placeholder="MM/AA" autocomplete="off">
+              </label>
+            </div>
             <label>Límite de crédito <span class="campo-prefijo"><span>$</span><input name="limite" type="number" step="0.01" min="0" required></span></label>
             <label>Saldo inicial (deuda previa) <span class="campo-prefijo"><span>$</span><input name="saldo_inicial" type="number" step="0.01" min="0" value="0"></span></label>
             <label>Estado <select name="estado"><option value="activa">Activa</option><option value="bloqueada">Bloqueada</option></select></label>
