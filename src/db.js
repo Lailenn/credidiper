@@ -71,7 +71,8 @@ export async function iniciarBase() {
       nombre        TEXT NOT NULL,
       limite        REAL NOT NULL CHECK (limite >= 0),
       saldo_inicial REAL NOT NULL DEFAULT 0 CHECK (saldo_inicial >= 0),
-      estado        TEXT NOT NULL DEFAULT 'activa' CHECK (estado IN ('activa', 'bloqueada'))
+      estado        TEXT NOT NULL DEFAULT 'activa' CHECK (estado IN ('activa', 'bloqueada')),
+      ultimos4      TEXT
     );
 
     CREATE TABLE IF NOT EXISTS gastos (
@@ -134,6 +135,7 @@ export async function iniciarBase() {
   const faltantes = {
     gastos: [['persona_id', 'INTEGER REFERENCES personas(id)'], ['nota', 'TEXT'], ['creado_en', 'TEXT']],
     facturas: [['imagen', 'BLOB'], ['tipo', 'TEXT']],
+    tarjetas: [['ultimos4', 'TEXT']],
   };
   for (const [tabla, lista] of Object.entries(faltantes)) {
     const existentes = await columnas(tabla);

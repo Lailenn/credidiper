@@ -29,7 +29,9 @@ router.get('/me', requireAuth, (req, res) => res.json(req.usuario));
 router.patch('/password', requireAuth, async (req, res) => {
   const actual = v.texto(req.body.actual, 'contraseña actual');
   const nueva = v.texto(req.body.nueva, 'contraseña nueva');
-  if (nueva.length < 6) throw new v.ErrorValidacion('La contraseña nueva debe tener al menos 6 caracteres');
+  if (nueva.length < 8 || !/\p{L}/u.test(nueva) || !/\d/.test(nueva)) {
+    throw new v.ErrorValidacion('La contraseña nueva debe tener al menos 8 caracteres e incluir letras y números');
+  }
   const { password_hash } = await uno('SELECT password_hash FROM usuarios WHERE id = ?', [req.usuario.id]);
   if (!bcrypt.compareSync(actual, password_hash)) return res.status(400).json({ error: 'La contraseña actual no es correcta' });
   await ejecutar('UPDATE usuarios SET password_hash = ? WHERE id = ?', [bcrypt.hashSync(nueva, 10), req.usuario.id]);

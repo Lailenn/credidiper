@@ -5,6 +5,14 @@ import * as v from '../validar.js';
 
 const router = Router();
 
+// Solo se guardan los últimos 4 dígitos (para reconocer la tarjeta), nunca el número completo
+const ultimos4 = (valor) => {
+  const digitos = String(valor ?? '').trim();
+  if (!digitos) return null;
+  if (!/^\d{4}$/.test(digitos)) throw new v.ErrorValidacion('Escribe solo los últimos 4 dígitos de la tarjeta');
+  return digitos;
+};
+
 // Todas las tarjetas con su saldo en una sola consulta
 router.get('/', async (req, res) => {
   const filas = await todos(`
@@ -32,7 +40,8 @@ router.post('/', requireRol('admin'), async (req, res) => {
   const limite = v.dinero(req.body.limite, 'límite');
   const saldoInicial = v.dinero(req.body.saldo_inicial ?? 0, 'saldo inicial');
   if (saldoInicial > limite) throw new v.ErrorValidacion('El saldo inicial no puede superar el límite');
-  const { id } = await ejecutar('INSERT INTO tarjetas (nombre, limite, saldo_inicial) VALUES (?, ?, ?)', [nombre, limite, saldoInicial]);
+  const { id } = await ejecutar('INSERT INTO tarjetas (nombre, limite, saldo_inicial, ultimos4) VALUES (?, ?, ?, ?)',
+    [nombre, limite, saldoInicial, ultimos4(req.body.ultimos4)]);
   res.status(201).json(await saldoTarjeta(id));
 });
 
@@ -44,13 +53,14 @@ router.patch('/:id', requireRol('admin'), async (req, res) => {
   const nombre = req.body.nombre !== undefined ? v.texto(req.body.nombre, 'nombre') : actual.nombre;
   const limite = req.body.limite !== undefined ? v.dinero(req.body.limite, 'límite') : actual.limite;
   const saldoInicial = req.body.saldo_inicial !== undefined ? v.dinero(req.body.saldo_inicial, 'saldo inicial') : actual.saldo_inicial;
+  const digitos = req.body.ultimos4 !== undefined ? ultimos4(req.body.ultimos4) : actual.ultimos4;
   const estado = req.body.estado !== undefined ? v.opcion(req.body.estado, 'estado', ['activa', 'bloqueada']) : actual.estado;
   if (limite - saldoInicial < actual.confirmados) {
     throw new v.ErrorValidacion('Con ese límite los gastos confirmados quedarían por encima del crédito');
   }
 
-  await ejecutar('UPDATE tarjetas SET nombre = ?, limite = ?, saldo_inicial = ?, estado = ? WHERE id = ?',
-    [nombre, limite, saldoInicial, estado, tarjetaId]);
+  await ejecutar('UPDATE tarjetas SET nombre = ?, limite = ?, saldo_inicial = ?, estado = ?, ultimos4 = ? WHERE id = ?',
+    [nombre, limite, saldoInicial, estado, digitos, tarjetaId]);
   res.json(await saldoTarjeta(tarjetaId));
 });
 

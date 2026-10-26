@@ -68,6 +68,8 @@ const ICONOS = {
   scan: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3.2"/>',
   flash: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  guardar: '<path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2"/><path d="M8 3v5h7V3M8 21v-7h8v7"/>',
+  escudo: '<path d="M12 3 4 6v6c0 4.5 3.4 8.2 8 9 4.6-.8 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
   repetir: '<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/>',
 };
 const ic = (nombre) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[nombre] || ''}</svg>`;
@@ -187,6 +189,7 @@ function pintarIconos(raiz = document) {
 const estado = {
   usuario: null,
   tarjeta: null,
+  tarjetas: [],
   personas: [],
   mes: hoy().slice(0, 7),
   filtroPersona: '',
@@ -209,6 +212,7 @@ const pastillaPersona = (id, nombre) => {
 
 async function cargarBase() {
   const [tarjetas, personas] = await Promise.all([api('/api/tarjetas'), api('/api/personas')]);
+  estado.tarjetas = tarjetas;
   estado.tarjeta = tarjetas.find((t) => t.estado === 'activa') || tarjetas[0] || null;
   estado.personas = personas;
 }
@@ -1169,35 +1173,99 @@ document.addEventListener('mousemove', (e) => {
 });
 
 // ---------- Configuración ----------
+let tarjetaEditando = null; // id de la tarjeta del formulario; null = tarjeta nueva
+
 async function cargarConfiguracion() {
   await cargarBase();
+  if (!estado.tarjetas.some((t) => t.id === tarjetaEditando)) tarjetaEditando = estado.tarjeta?.id ?? null;
+  pintarTarjetas();
+  llenarFormTarjeta();
+}
+
+function pintarTarjetas() {
+  const nueva = tarjetaEditando === null;
+  $('#tarjetas-fila').innerHTML = estado.tarjetas.map((t) => `
+    <button type="button" class="tarjeta-visual${t.id === tarjetaEditando ? ' elegida' : ''}${t.estado === 'bloqueada' ? ' bloqueada' : ''}"
+      data-tarjeta="${t.id}" aria-pressed="${t.id === tarjetaEditando}" aria-label="Editar ${esc(t.nombre)}">
+      <span class="tv-chip"></span>
+      <svg class="tv-onda" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8a5.5 5.5 0 0 1 0 8M11.5 6a9 9 0 0 1 0 12M15 4a12.5 12.5 0 0 1 0 16"/></svg>
+      <span class="tv-logo"><span><span class="tv-rombo"></span>siman</span><small>CREDISIMAN</small></span>
+      <span class="tv-numero">${t.ultimos4 ? `•••• ${t.ultimos4}` : ''}</span>
+      <span class="tv-marca">VISA</span>
+      ${t.estado === 'bloqueada' ? '<span class="tv-estado">Bloqueada</span>' : ''}
+    </button>`).join('') + `
+    <button type="button" class="tarjeta-agregar${nueva ? ' elegida' : ''}" data-tarjeta="nueva" aria-pressed="${nueva}">
+      <span class="ta-mas">${ic('plus')}</span>
+      <span>${estado.tarjetas.length ? 'Agregar otra tarjeta' : 'Agregar tarjeta'}</span>
+    </button>`;
+}
+
+function llenarFormTarjeta() {
   const form = $('#form-tarjeta');
-  const t = estado.tarjeta;
+  const t = estado.tarjetas.find((x) => x.id === tarjetaEditando);
   form.nombre.value = t?.nombre ?? '';
+  form.ultimos4.value = t?.ultimos4 ?? '';
   form.limite.value = t?.limite ?? '';
   form.saldo_inicial.value = t?.saldo_inicial ?? 0;
   form.estado.value = t?.estado ?? 'activa';
-  form.querySelector('[type=submit]').textContent = t ? 'Guardar tarjeta' : 'Crear tarjeta';
+  form.estado.closest('label').hidden = !t;
+  $('#tarjeta-error').textContent = '';
+  form.querySelector('[type=submit] span').textContent = t ? 'Guardar cambios' : 'Crear tarjeta';
 }
+
+$('#tarjetas-fila').addEventListener('click', (e) => {
+  const boton = e.target.closest('[data-tarjeta]');
+  if (!boton) return;
+  tarjetaEditando = boton.dataset.tarjeta === 'nueva' ? null : Number(boton.dataset.tarjeta);
+  pintarTarjetas();
+  llenarFormTarjeta();
+  if (tarjetaEditando === null) $('#form-tarjeta').nombre.focus();
+});
 
 $('#form-tarjeta').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
   await conError($('#tarjeta-error'), async () => {
     const d = datosForm(form);
-    if (estado.tarjeta) await api(`/api/tarjetas/${estado.tarjeta.id}`, { method: 'PATCH', body: d });
-    else await api('/api/tarjetas', { method: 'POST', body: d });
+    if (tarjetaEditando) {
+      await api(`/api/tarjetas/${tarjetaEditando}`, { method: 'PATCH', body: d });
+    } else {
+      delete d.estado;
+      tarjetaEditando = (await api('/api/tarjetas', { method: 'POST', body: d })).id;
+    }
     toast('Tarjeta guardada');
     await cargarConfiguracion();
   }, form.querySelector('[type=submit]'));
+});
+
+// Ojo para mostrar u ocultar cada contraseña
+$$('#form-password .btn-ojo').forEach((boton) => boton.addEventListener('click', () => {
+  const input = boton.previousElementSibling;
+  input.type = input.type === 'password' ? 'text' : 'password';
+  boton.setAttribute('aria-label', input.type === 'password' ? 'Mostrar contraseña' : 'Ocultar contraseña');
+}));
+
+// Marca en verde los requisitos que la contraseña nueva ya cumple
+const REGLAS_CLAVE = {
+  largo: (c) => c.length >= 8,
+  letras: (c) => /\p{L}/u.test(c) && /\d/.test(c),
+  simbolo: (c) => /[^\p{L}\d\s]/u.test(c),
+};
+$('#form-password').nueva.addEventListener('input', (e) => {
+  $$('#requisitos-clave li').forEach((li) => li.classList.toggle('cumple', REGLAS_CLAVE[li.dataset.regla](e.target.value)));
 });
 
 $('#form-password').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
   await conError($('#password-error'), async () => {
-    await api('/api/auth/password', { method: 'PATCH', body: datosForm(form) });
+    const { actual, nueva, confirmar } = datosForm(form);
+    if (!actual) throw new Error('Ingresa tu contraseña actual');
+    if (!REGLAS_CLAVE.largo(nueva) || !REGLAS_CLAVE.letras(nueva)) throw new Error('La contraseña nueva no cumple los requisitos');
+    if (nueva !== confirmar) throw new Error('La confirmación no coincide con la contraseña nueva');
+    await api('/api/auth/password', { method: 'PATCH', body: { actual, nueva } });
     form.reset();
+    $$('#requisitos-clave li').forEach((li) => li.classList.remove('cumple'));
     toast('Contraseña actualizada');
   }, form.querySelector('[type=submit]'));
 });

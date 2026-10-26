@@ -567,6 +567,77 @@ label { display: flex; flex-direction: column; gap: 6px; font-size: .88rem; colo
 .form-vertical { display: flex; flex-direction: column; gap: 14px; }
 .form-vertical h2 { margin-bottom: 0; }
 .form-vertical .btn { align-self: flex-start; }
+.encabezado-sub { flex-direction: column; align-items: flex-start; gap: 4px; }
+.encabezado-sub p { color: var(--tinta-2); font-size: .92rem; }
+section[data-vista="configuracion"] .config-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); align-items: start; }
+section[data-vista="configuracion"] .panel { padding: 26px; }
+section[data-vista="configuracion"] label { color: var(--tinta); font-weight: 500; }
+section[data-vista="configuracion"] .btn-primario { padding: 12px 26px; }
+.config-titulo { display: flex; gap: 14px; align-items: center; margin-bottom: 6px; }
+.config-titulo p { color: var(--tinta-2); font-size: .86rem; margin-top: 2px; }
+.config-icono { flex: none; width: 54px; height: 54px; border-radius: 14px; background: var(--marca-50); color: var(--marca); display: grid; place-items: center; }
+.config-icono .ic { width: 26px; height: 26px; }
+.opcional { color: var(--tenue); font-weight: 400; font-size: .8rem; }
+
+/* Tarjetas dibujadas en vertical, como la Credisiman física: azul marino, franja de rombos, chip, logo y VISA */
+.tarjetas-fila { display: flex; flex-wrap: wrap; gap: 18px; }
+.tarjetas-fila { margin-bottom: 4px; }
+.tarjeta-visual, .tarjeta-agregar { flex: 0 0 min(190px, calc(50% - 9px)); aspect-ratio: .63; border-radius: 14px; font: inherit; cursor: pointer; }
+.tarjeta-visual {
+  position: relative; display: block; border: 0; padding: 0; overflow: hidden; color: #fff; text-align: left; container-type: inline-size;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, .07), transparent 45%),
+    #2a3270;
+  box-shadow: 0 10px 22px rgba(20, 26, 75, .3);
+  transition: transform .15s, box-shadow .15s;
+}
+/* Franja de rombos en el borde izquierdo */
+.tarjeta-visual::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 4%; width: 14%;
+  background:
+    conic-gradient(from 45deg at 50% 50%, rgba(255, 255, 255, .09) 25%, transparent 0 50%, rgba(255, 255, 255, .09) 0 75%, transparent 0)
+    0 0 / 50% 6cqi;
+  -webkit-mask: linear-gradient(transparent, #000 4%, #000 96%, transparent);
+  mask: linear-gradient(transparent, #000 4%, #000 96%, transparent);
+}
+.tarjeta-visual:hover { transform: translateY(-2px); }
+.tarjeta-visual.elegida { box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--marca), 0 10px 22px rgba(20, 26, 75, .3); }
+.tarjeta-visual.bloqueada { filter: grayscale(.7); }
+.tarjeta-visual > * { position: absolute; }
+.tv-chip {
+  top: 10%; left: 50%; width: 17cqi; height: 21cqi; border-radius: 2.4cqi;
+  background: linear-gradient(135deg, #d9d4c6, #a39d8c); box-shadow: inset 0 0 0 .5cqi rgba(0, 0, 0, .15);
+}
+.tv-chip::before { content: ""; position: absolute; inset: 22% 18%; border: .5cqi solid rgba(0, 0, 0, .2); border-radius: 40%; }
+.tv-onda { top: 13.5%; left: 70%; width: 11cqi; height: 11cqi; fill: none; stroke: #fff; stroke-width: 2.2; stroke-linecap: round; }
+.tv-logo {
+  top: 40%; left: 18%; right: 8%; display: flex; flex-direction: column; align-items: flex-end;
+  font-size: 18cqi; font-weight: 500; letter-spacing: -.01em; line-height: 1;
+}
+.tv-logo small { font-size: 4.6cqi; font-weight: 600; letter-spacing: .02em; margin-top: 1.5cqi; }
+.tv-rombo { display: inline-block; vertical-align: .12em; margin-right: 2.5cqi; width: 7cqi; height: 7cqi; background: #fff; transform: rotate(45deg) skew(8deg, 8deg); }
+.tv-numero { left: 24%; bottom: 17%; font-size: 6cqi; letter-spacing: .08em; opacity: .85; white-space: nowrap; }
+.tv-marca { right: 9%; bottom: 6%; font-size: 15cqi; font-weight: 800; font-style: italic; letter-spacing: -.02em; }
+.tv-estado { top: 4%; right: 6%; font-size: 5cqi; font-weight: 700; background: rgba(255, 255, 255, .2); padding: 1cqi 3cqi; border-radius: 99px; }
+.tarjeta-agregar {
+  border: 2px dashed var(--marca-100); background: #fbfaff; color: var(--marca); font-weight: 600; text-align: center; padding: 10px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+}
+.tarjeta-agregar:hover, .tarjeta-agregar.elegida { border-color: var(--marca); background: var(--marca-50); }
+.ta-mas { width: 52px; height: 52px; border-radius: 50%; background: var(--marca-100); display: grid; place-items: center; }
+.ta-mas .ic { width: 26px; height: 26px; stroke-width: 2.4; }
+
+/* Contraseñas con ojo y requisitos */
+.campo-clave { display: flex; align-items: center; border: 1px solid var(--linea); border-radius: 10px; background: #fff; padding-right: 10px; }
+.campo-clave:focus-within { border-color: var(--marca); box-shadow: 0 0 0 3px var(--marca-50); }
+.campo-clave input { border: 0; box-shadow: none !important; padding-block: 13px; }
+.campo-clave .btn-ojo { color: var(--tinta); }
+.requisitos { display: flex; gap: 12px; background: var(--marca-50); border-radius: 12px; padding: 16px 18px; color: var(--tinta-2); font-size: .88rem; }
+.requisitos > .ic { flex: none; color: var(--marca); width: 20px; height: 20px; }
+.requisitos strong { color: var(--marca); }
+.requisitos ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }
+.requisitos li.cumple { color: var(--verde); }
+.requisitos li.cumple::marker { content: "✓  "; }
 .fila-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; align-items: end; margin-bottom: 8px; }
 section[data-vista="personas"] .fila-form { grid-template-columns: minmax(200px, 360px) auto; justify-content: start; }
 
