@@ -737,6 +737,12 @@ section[data-vista="personas"] .fila-form { grid-template-columns: minmax(200px,
   .lat-icono { width: 42px; height: 42px; }
   .lat-tip { display: none; }
   .principal { padding: 20px 14px 40px 104px; }
+  /* Fuera de Inicio la barra se reduce a solo el avatar y la flecha; la flecha la abre completa encima */
+  .lateral.minima:not(.expandida) { bottom: auto; padding-bottom: 12px; }
+  .lateral.minima:not(.expandida) .lat-perfil { border-bottom: 0; padding-bottom: 0; }
+  .lateral.minima:not(.expandida) > :not(.lat-perfil) { display: none; }
+  body.menu-minimo .principal { padding-left: 14px; }
+  body.menu-minimo .principal > section > .encabezado:first-child { padding-left: 80px; min-height: 56px; }
   .dos-columnas, .dos-columnas.invertido { grid-template-columns: 1fr; }
   .dos-columnas.invertido .col-imagen { order: -1; }
   .stats { grid-template-columns: 1fr; }

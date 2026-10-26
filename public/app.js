@@ -343,6 +343,15 @@ document.addEventListener('click', (e) => {
   if (esCelular() && $('#lateral').classList.contains('expandida') && !e.target.closest('#lateral')) expandirMenu(false);
 });
 
+// En el celular la barra completa solo se ve en Inicio; en las demás secciones queda solo el avatar con la flecha
+function ajustarMenuMinimo() {
+  const vista = location.hash.slice(1).split('/')[0] || 'inicio';
+  const minimo = esCelular() && vista !== 'inicio' && Boolean(vistas[vista]);
+  $('#lateral').classList.toggle('minima', minimo);
+  document.body.classList.toggle('menu-minimo', minimo);
+}
+matchMedia('(max-width: 860px)').addEventListener('change', ajustarMenuMinimo);
+
 // ---------- Navegación (#vista o #gasto/12) ----------
 const vistas = {
   inicio: cargarInicio,
@@ -362,6 +371,7 @@ function navegar() {
   const [nombre, param] = location.hash.slice(1).split('/');
   const vista = vistas[nombre] ? nombre : 'inicio';
   if (!$('#escaner').hidden) cerrarEscaner();
+  ajustarMenuMinimo();
   const seccion = vista === 'gasto' ? 'detalle' : vista;
   $$('.principal > section').forEach((s) => { s.hidden = s.dataset.vista !== seccion; });
   $$('#menu a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === (MENU_DE[vista] || vista)));
