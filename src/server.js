@@ -55,7 +55,17 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-await iniciarBase();
+// Si la base en línea no responde al arrancar (red inestable o base dormida), se reintenta en vez de caerse
+for (let intento = 1; ; intento++) {
+  try {
+    await iniciarBase();
+    break;
+  } catch (err) {
+    if (intento >= 6) throw err;
+    console.error(`No se pudo conectar con la base (intento ${intento}): ${err.cause?.code || err.message}. Reintentando…`);
+    await new Promise((r) => setTimeout(r, 3000 * intento));
+  }
+}
 app.listen(PORT, (err) => {
   if (err) {
     console.error(err.code === 'EADDRINUSE'
