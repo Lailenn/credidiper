@@ -137,13 +137,20 @@
 
           <!-- Paso 1 -->
           <div class="paso" data-paso="1">
+            <div class="opciones-captura">
+              <button type="button" class="opcion-captura principal" id="btn-tomar-foto">
+                <span class="opcion-icono"><i data-icon="scan"></i></span>
+                <span><strong>Escanear con la cámara</strong><small>Toma la foto y se lee sola</small></span>
+              </button>
+            </div>
+            <input type="file" id="input-camara" accept="image/*" capture="environment" hidden>
             <label class="zona-subida" id="zona-subida">
               <input type="file" id="input-factura" accept="image/jpeg,image/png,image/webp" hidden>
               <div class="zona-contenido" id="zona-contenido">
                 <span class="zona-icono"><i data-icon="receipt"></i><span class="zona-camara"><i data-icon="camera"></i></span></span>
-                <strong>Sube una foto de la factura</strong>
+                <strong>O sube una foto de la factura</strong>
                 <p>El sistema leerá automáticamente<br>la información (fecha, comercio y monto)</p>
-                <span class="btn btn-primario">Seleccionar imagen</span>
+                <span class="btn btn-borde">Seleccionar imagen</span>
                 <small>o arrastra la imagen aquí</small>
               </div>
               <div class="zona-cargando" id="zona-cargando" hidden>
@@ -163,11 +170,17 @@
           <!-- Paso 2 -->
           <div class="paso dos-columnas" data-paso="2" hidden>
             <div class="col-imagen">
-              <div class="marco-factura" id="paso2-imagen"></div>
+              <div class="ticket" id="ticket">
+                <h3 id="ticket-comercio"></h3>
+                <p class="ticket-fecha" id="ticket-fecha"></p>
+                <ul class="ticket-items" id="ticket-items"></ul>
+                <dl class="ticket-totales" id="ticket-totales"></dl>
+              </div>
+              <div class="ticket-foto" id="paso2-imagen"></div>
               <button type="button" class="btn btn-borde btn-bloque" id="btn-cambiar-imagen"><i data-icon="image"></i> Cambiar imagen</button>
             </div>
             <form id="form-datos" class="col-datos" novalidate>
-              <h2>Datos extraídos</h2>
+              <h2>Revisa los datos</h2>
               <label>Comercio <input name="comercio" required maxlength="200"></label>
               <label>Fecha <input name="fecha_compra" type="date" required></label>
               <label>Monto total
@@ -191,8 +204,12 @@
                   <dt>Comercio</dt><dd id="conf-comercio"></dd>
                   <dt>Fecha</dt><dd id="conf-fecha"></dd>
                   <dt>Monto</dt><dd id="conf-monto"></dd>
-                  <dt>Persona</dt><dd><select name="persona_id" id="conf-persona" required></select></dd>
                 </dl>
+                <div class="campo-personas">
+                  <span class="etiqueta">¿De quién es el gasto?</span>
+                  <input type="hidden" name="persona_id" id="conf-persona">
+                  <div class="elegir-persona" id="elegir-persona" role="radiogroup" aria-label="Persona del gasto"></div>
+                </div>
                 <label>Nota (opcional) <textarea name="nota" rows="3" maxlength="500" placeholder="Agregar una nota…"></textarea></label>
               </div>
               <p class="mensaje-error" id="confirmar-error" role="alert"></p>
@@ -253,6 +270,7 @@
           <div class="col-datos">
             <h2>Información de la factura</h2>
             <dl class="lista-datos" id="detalle-datos"></dl>
+            <div id="detalle-items"></div>
             <div class="botones" id="detalle-acciones"></div>
           </div>
         </div>
@@ -351,6 +369,36 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- Escáner de facturas con la cámara -->
+  <div class="escaner" id="escaner" hidden>
+    <video id="escaner-video" playsinline muted autoplay></video>
+    <img id="escaner-foto" alt="" hidden>
+    <div class="esc-arriba">
+      <button type="button" class="esc-boton" id="esc-cerrar" aria-label="Cerrar escáner"><i data-icon="back"></i></button>
+      <span class="esc-pastilla" id="esc-estado">Apunta a la factura</span>
+      <span class="esc-hueco"></span>
+    </div>
+    <div class="esc-marco" id="esc-marco">
+      <i class="esq a"></i><i class="esq b"></i><i class="esq c"></i><i class="esq d"></i>
+      <div class="esc-linea"></div>
+    </div>
+    <div class="esc-resultado" id="esc-resultado" hidden>
+      <div class="esc-resultado-datos">
+        <strong id="esc-res-comercio"></strong>
+        <small id="esc-res-detalle"></small>
+        <div class="esc-res-fila"><span class="esc-res-total" id="esc-res-total"></span><small id="esc-res-fecha"></small></div>
+      </div>
+      <button type="button" class="esc-continuar" id="esc-continuar"><i data-icon="check"></i><span>Continuar</span></button>
+    </div>
+    <div class="esc-abajo">
+      <button type="button" class="esc-boton grande" id="esc-galeria" aria-label="Elegir de la galería"><i data-icon="image"></i></button>
+      <button type="button" class="esc-disparo" id="esc-disparo" aria-label="Tomar foto"><span></span></button>
+      <button type="button" class="esc-boton grande" id="esc-linterna" aria-label="Linterna" hidden><i data-icon="flash"></i></button>
+      <button type="button" class="esc-boton grande" id="esc-repetir" aria-label="Tomar otra foto" hidden><i data-icon="repetir"></i></button>
+    </div>
+    <input type="file" id="esc-input-galeria" accept="image/jpeg,image/png,image/webp" hidden>
   </div>
 
   <!-- Visor de imagen y tooltip -->

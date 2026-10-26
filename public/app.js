@@ -1,3 +1,5 @@
+import { extraerDatos } from './extraer.js';
+
 // Dónde está el API:
 // - En GitHub Pages: el servidor publicado en Render (misma base de datos compartida).
 // - En Live Server (puertos 5500+): el servidor local de Node en el puerto 3000.
@@ -54,6 +56,9 @@ const ICONOS = {
   cloud: '<path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.9 9.5 4.5 4.5 0 0 1 17.5 18.5z"/>',
   factura: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 10.5v7M14.2 12h-3a1.3 1.3 0 0 0 0 2.6h1.6a1.3 1.3 0 0 1 0 2.6H9.8"/>',
   historial: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  scan: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3.2"/>',
+  flash: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  repetir: '<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/>',
 };
 const ic = (nombre) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[nombre] || ''}</svg>`;
 
@@ -325,6 +330,7 @@ function navegar() {
   if (!estado.usuario) return;
   const [nombre, param] = location.hash.slice(1).split('/');
   const vista = vistas[nombre] ? nombre : 'inicio';
+  if (!$('#escaner').hidden) cerrarEscaner();
   const seccion = vista === 'gasto' ? 'detalle' : vista;
   $$('.principal > section').forEach((s) => { s.hidden = s.dataset.vista !== seccion; });
   $$('#menu a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === (vista === 'gasto' ? 'gastos' : vista)));
@@ -390,7 +396,7 @@ async function cargarInicio() {
 }
 
 // ---------- Registrar gasto (asistente de 3 pasos) ----------
-const registro = { paso: 1, archivo: null, vistaPrevia: null, texto: '', ocrOk: false, datos: {} };
+const registro = { paso: 1, archivo: null, vistaPrevia: null, texto: '', ocrOk: false, leido: null, datos: {} };
 
 function irPaso(n) {
   registro.paso = n;
@@ -412,9 +418,10 @@ function marcoImagen(src, conZoom) {
 
 function reiniciarRegistro() {
   if (registro.vistaPrevia) URL.revokeObjectURL(registro.vistaPrevia);
-  Object.assign(registro, { paso: 1, archivo: null, vistaPrevia: null, texto: '', ocrOk: false, datos: {} });
+  Object.assign(registro, { paso: 1, archivo: null, vistaPrevia: null, texto: '', ocrOk: false, leido: null, datos: {} });
   $('#form-datos').reset();
   $('#form-confirmar').reset();
+  $('#conf-persona').value = '';
   $('#input-factura').value = '';
   $('#zona-contenido').hidden = false;
   $('#zona-cargando').hidden = true;
@@ -430,29 +437,38 @@ async function abrirRegistro() {
   }
 }
 
+function errorImagen(archivo) {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(archivo.type)) return 'Formato no admitido. Usa JPG, PNG o WEBP.';
+  if (archivo.size > 8 * 1024 * 1024) return 'La imagen pesa más de 8 MB.';
+  return '';
+}
+
+// Sube la imagen, guarda lo que leyó el OCR y llena el formulario del paso 2
+async function leerImagenFactura(archivo) {
+  const fd = new FormData();
+  fd.append('imagen', await comprimirImagen(archivo));
+  const r = await api('/api/facturas/ocr', { method: 'POST', body: fd });
+  if (registro.vistaPrevia) URL.revokeObjectURL(registro.vistaPrevia);
+  Object.assign(registro, { archivo: r.archivo, vistaPrevia: URL.createObjectURL(archivo), texto: r.texto, ocrOk: r.ok, leido: r });
+  const form = $('#form-datos');
+  form.comercio.value = r.comercio || '';
+  form.fecha_compra.value = r.fecha || '';
+  form.monto.value = r.monto ?? '';
+  return r;
+}
+
 async function procesarArchivo(archivo) {
   $('#subida-error').textContent = '';
   if (!archivo) return;
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(archivo.type)) {
-    $('#subida-error').textContent = 'Formato no admitido. Usa JPG, PNG o WEBP.';
-    return;
-  }
-  if (archivo.size > 8 * 1024 * 1024) {
-    $('#subida-error').textContent = 'La imagen pesa más de 8 MB.';
+  const error = errorImagen(archivo);
+  if (error) {
+    $('#subida-error').textContent = error;
     return;
   }
   $('#zona-contenido').hidden = true;
   $('#zona-cargando').hidden = false;
-  const fd = new FormData();
-  fd.append('imagen', await comprimirImagen(archivo));
   try {
-    const r = await api('/api/facturas/ocr', { method: 'POST', body: fd });
-    if (registro.vistaPrevia) URL.revokeObjectURL(registro.vistaPrevia);
-    Object.assign(registro, { archivo: r.archivo, vistaPrevia: URL.createObjectURL(archivo), texto: r.texto, ocrOk: r.ok });
-    const form = $('#form-datos');
-    form.comercio.value = r.comercio || '';
-    form.fecha_compra.value = r.fecha || '';
-    form.monto.value = r.monto ?? '';
+    await leerImagenFactura(archivo);
     mostrarPaso2();
   } catch (err) {
     $('#subida-error').textContent = err.message;
@@ -463,8 +479,25 @@ async function procesarArchivo(archivo) {
   }
 }
 
+// Ticket con lo reconocido: productos, subtotal, impuesto y el total (que sigue lo que se escriba en el formulario)
+function pintarTicket() {
+  const form = $('#form-datos');
+  const leido = registro.leido || {};
+  const items = leido.items || [];
+  $('#ticket-comercio').textContent = form.comercio.value.trim() || 'Comercio';
+  $('#ticket-fecha').textContent = form.fecha_compra.value ? fechaCorta(form.fecha_compra.value) : 'Sin fecha';
+  $('#ticket-items').innerHTML = items.length
+    ? items.map((it) => `<li><span class="cant">${it.cantidad}x</span><span>${esc(it.descripcion)}</span><span class="precio">${dinero(it.precio)}</span></li>`).join('')
+    : `<li class="vacio-items">${registro.archivo ? 'No se detectaron productos en la foto' : 'Gasto sin factura'}</li>`;
+  $('#ticket-totales').innerHTML =
+    (leido.subtotal ? `<dt>Subtotal</dt><dd>${dinero(leido.subtotal)}</dd>` : '') +
+    (leido.impuesto ? `<dt class="impuesto">Impuesto</dt><dd class="impuesto">${dinero(leido.impuesto)}</dd>` : '') +
+    `<dt class="total">Total</dt><dd class="total">${form.monto.value ? dinero(form.monto.value) : '—'}</dd>`;
+}
+$('#form-datos').addEventListener('input', pintarTicket);
+
 function mostrarPaso2() {
-  $('#paso2-imagen').innerHTML = marcoImagen(registro.vistaPrevia, false);
+  $('#paso2-imagen').innerHTML = registro.vistaPrevia ? `<div class="marco-factura">${marcoImagen(registro.vistaPrevia, true)}</div>` : '';
   $('#btn-cambiar-imagen').innerHTML = `${ic('image')} ${registro.archivo ? 'Cambiar imagen' : 'Subir factura'}`;
   const form = $('#form-datos');
   const aviso = $('#aviso-ocr');
@@ -479,6 +512,7 @@ function mostrarPaso2() {
       ? `${ic('check')}<div><b>Información leída automáticamente</b><br>Revisa que los datos sean correctos. Puedes editarlos si es necesario.</div>`
       : `${ic('alert')}<div><b>No se pudo leer toda la información</b><br>Completa o corrige los campos vacíos mirando la factura.</div>`;
   }
+  pintarTicket();
   irPaso(2);
 }
 
@@ -492,12 +526,44 @@ zona.addEventListener('drop', (e) => {
   procesarArchivo(e.dataTransfer.files[0]);
 });
 $('#btn-sin-factura').addEventListener('click', () => {
-  registro.archivo = null;
-  registro.vistaPrevia = null;
-  registro.texto = '';
+  Object.assign(registro, { archivo: null, vistaPrevia: null, texto: '', leido: null });
   mostrarPaso2();
 });
 $('#btn-cambiar-imagen').addEventListener('click', () => irPaso(1));
+
+// Persona del gasto: avatares para elegir (y "+" para que la administración agregue una al momento)
+function pintarPersonasElegibles() {
+  const activas = estado.personas.filter((p) => p.activo);
+  const elegida = $('#conf-persona').value;
+  $('#elegir-persona').innerHTML = activas.map((p) => `
+    <button type="button" class="persona-opcion" role="radio" aria-checked="${String(p.id) === elegida}" data-persona="${p.id}">
+      ${avatarPersona(p.id)}<span class="nombre-op">${esc(p.nombre)}</span>
+    </button>`).join('') +
+    (esAdmin() ? `<button type="button" class="persona-opcion persona-agregar" id="btn-agregar-persona">
+      <span class="avatar-persona">${ic('plus')}</span><span class="nombre-op">Agregar</span></button>` : '');
+  $('#confirmar-error').innerHTML = activas.length || esAdmin() ? ''
+    : 'No hay personas registradas. Pide a la persona administradora que agregue una.';
+}
+
+$('#elegir-persona').addEventListener('click', async (e) => {
+  const opcion = e.target.closest('[data-persona]');
+  if (opcion) {
+    $('#conf-persona').value = opcion.dataset.persona;
+    $$('#elegir-persona [data-persona]').forEach((b) => b.setAttribute('aria-checked', String(b === opcion)));
+    $('#confirmar-error').textContent = '';
+    return;
+  }
+  if (e.target.closest('#btn-agregar-persona')) {
+    const nombre = prompt('Nombre de la persona (por ejemplo: Mamá):');
+    if (!nombre?.trim()) return;
+    await conError($('#confirmar-error'), async () => {
+      const nueva = await api('/api/personas', { method: 'POST', body: { nombre } });
+      await cargarBase();
+      $('#conf-persona').value = nueva.id;
+      pintarPersonasElegibles();
+    });
+  }
+});
 
 $('#form-datos').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -513,13 +579,7 @@ $('#form-datos').addEventListener('submit', (e) => {
   $('#conf-comercio').textContent = registro.datos.comercio;
   $('#conf-fecha').textContent = fechaCorta(registro.datos.fecha_compra);
   $('#conf-monto').textContent = dinero(registro.datos.monto);
-  const activas = estado.personas.filter((p) => p.activo);
-  const sel = $('#conf-persona');
-  const anterior = sel.value;
-  sel.innerHTML = '<option value="">Selecciona…</option>' + activas.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('');
-  sel.value = anterior;
-  $('#confirmar-error').innerHTML = activas.length ? ''
-    : esAdmin() ? 'No hay personas registradas. <a href="#personas">Agrega una</a> primero.' : 'No hay personas registradas. Pide a la persona administradora que agregue una.';
+  pintarPersonasElegibles();
   $('#paso3-imagen').innerHTML = marcoImagen(registro.vistaPrevia, true);
   irPaso(3);
 });
@@ -531,7 +591,7 @@ $('#form-confirmar').addEventListener('submit', async (e) => {
   const form = e.target;
   const d = datosForm(form);
   if (!d.persona_id) {
-    $('#confirmar-error').textContent = 'Selecciona a qué persona corresponde el gasto';
+    $('#confirmar-error').textContent = 'Elige de quién es el gasto';
     return;
   }
   const cuerpo = {
@@ -558,6 +618,131 @@ $('#form-confirmar').addEventListener('submit', async (e) => {
 });
 
 $('#btn-otro-gasto').addEventListener('click', abrirRegistro);
+
+// ---------- Escáner de facturas con la cámara ----------
+const escaner = { stream: null, track: null, linterna: false, foto: null };
+
+function modoEscaner(modo, texto) {
+  const el = $('#escaner');
+  el.classList.toggle('leyendo', modo === 'leyendo');
+  el.classList.toggle('listo', modo === 'listo');
+  $('#esc-estado').textContent = texto;
+  $('#escaner-foto').hidden = modo === 'apuntando';
+  $('#esc-resultado').hidden = modo !== 'listo';
+  $('#esc-repetir').hidden = modo !== 'listo';
+  $('#esc-galeria').hidden = modo === 'listo';
+}
+
+function soltarFoto() {
+  if (escaner.foto) URL.revokeObjectURL(escaner.foto);
+  escaner.foto = null;
+}
+
+async function abrirEscaner() {
+  // Sin acceso a la cámara desde el navegador: se usa la cámara del teléfono a través del selector de archivos
+  if (!navigator.mediaDevices?.getUserMedia) {
+    $('#input-camara').click();
+    return;
+  }
+  try {
+    escaner.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false,
+    });
+  } catch (err) {
+    toast(err.name === 'NotAllowedError'
+      ? 'No diste permiso para usar la cámara. Puedes subir la foto desde la galería.'
+      : 'No se encontró una cámara. Puedes subir la foto desde la galería.', 5000);
+    $('#input-camara').click();
+    return;
+  }
+  escaner.track = escaner.stream.getVideoTracks()[0];
+  escaner.linterna = false;
+  const video = $('#escaner-video');
+  video.srcObject = escaner.stream;
+  video.play().catch(() => {});
+  $('#esc-linterna').hidden = !escaner.track.getCapabilities?.().torch;
+  $('#esc-linterna').classList.remove('activo');
+  $('#escaner').hidden = false;
+  modoEscaner('apuntando', 'Apunta a la factura');
+}
+
+function cerrarEscaner() {
+  escaner.stream?.getTracks().forEach((t) => t.stop());
+  Object.assign(escaner, { stream: null, track: null });
+  $('#escaner-video').srcObject = null;
+  soltarFoto();
+  $('#escaner').hidden = true;
+}
+
+async function leerDesdeEscaner(archivo) {
+  const error = errorImagen(archivo);
+  if (error) {
+    toast(error);
+    return;
+  }
+  soltarFoto();
+  escaner.foto = URL.createObjectURL(archivo);
+  $('#escaner-foto').src = escaner.foto;
+  modoEscaner('leyendo', 'Escaneando factura…');
+  try {
+    const r = await leerImagenFactura(archivo);
+    $('#esc-res-comercio').textContent = r.comercio || 'Comercio no detectado';
+    const productos = r.items?.length || 0;
+    $('#esc-res-detalle').textContent = productos ? `${productos} ${productos === 1 ? 'producto' : 'productos'} detectados` : 'Revisa los datos en el siguiente paso';
+    $('#esc-res-total').textContent = r.monto ? dinero(r.monto) : '$ —';
+    $('#esc-res-fecha').textContent = r.fecha ? fechaCorta(r.fecha) : '';
+    modoEscaner('listo', r.ok && r.monto ? 'Factura leída' : 'Revisa los datos');
+  } catch (err) {
+    toast(err.message, 5000);
+    modoEscaner('apuntando', 'Apunta a la factura');
+  }
+}
+
+function capturarFoto() {
+  const video = $('#escaner-video');
+  if (!video.videoWidth) return;
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  canvas.toBlob((blob) => {
+    if (blob) leerDesdeEscaner(new File([blob], 'factura.jpg', { type: 'image/jpeg' }));
+  }, 'image/jpeg', 0.92);
+}
+
+$('#btn-tomar-foto').addEventListener('click', abrirEscaner);
+$('#input-camara').addEventListener('change', (e) => {
+  procesarArchivo(e.target.files[0]);
+  e.target.value = '';
+});
+$('#esc-cerrar').addEventListener('click', cerrarEscaner);
+$('#esc-disparo').addEventListener('click', capturarFoto);
+$('#esc-galeria').addEventListener('click', () => $('#esc-input-galeria').click());
+$('#esc-input-galeria').addEventListener('change', (e) => {
+  if (e.target.files[0]) leerDesdeEscaner(e.target.files[0]);
+  e.target.value = '';
+});
+$('#esc-repetir').addEventListener('click', () => {
+  soltarFoto();
+  modoEscaner('apuntando', 'Apunta a la factura');
+});
+$('#esc-continuar').addEventListener('click', () => {
+  cerrarEscaner();
+  mostrarPaso2();
+});
+$('#esc-linterna').addEventListener('click', async () => {
+  try {
+    await escaner.track.applyConstraints({ advanced: [{ torch: !escaner.linterna }] });
+    escaner.linterna = !escaner.linterna;
+    $('#esc-linterna').classList.toggle('activo', escaner.linterna);
+  } catch {
+    toast('Este dispositivo no permite encender la linterna desde el navegador');
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#escaner').hidden) cerrarEscaner();
+});
 
 // ---------- Mis gastos ----------
 let buscarTimer;
@@ -638,6 +823,13 @@ async function cargarDetalle(id) {
     <dt>Registrado por</dt><dd>${esc(g.usuario)}</dd>
     <dt>Fecha de registro</dt><dd>${fechaHora(g.creado_en)}</dd>
     <dt>Nota</dt><dd>${g.nota ? esc(g.nota) : '—'}</dd>`;
+  // Productos: se vuelven a sacar del texto que leyó el OCR al registrar la factura
+  const items = g.texto_ocr ? extraerDatos(g.texto_ocr).items : [];
+  $('#detalle-items').innerHTML = items.length ? `
+    <h2>Productos de la factura</h2>
+    <ul class="ticket-items">${items.map((it) =>
+      `<li><span class="cant">${it.cantidad}x</span><span>${esc(it.descripcion)}</span><span class="precio">${dinero(it.precio)}</span></li>`).join('')}
+    </ul>` : '';
   $('#detalle-acciones').innerHTML = g.estado !== 'anulado'
     ? `<button class="btn btn-peligro" data-anular="${g.id}">${ic('ban')} Anular gasto</button>` : '';
 }

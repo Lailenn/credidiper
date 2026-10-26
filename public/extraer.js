@@ -42,5 +42,35 @@ export function extraerDatos(texto) {
     if (todos.length) monto = Math.max(...todos);
   }
 
-  return { comercio, fecha, monto };
+  // Subtotal e impuesto (IVA), si aparecen
+  const montoDeLinea = (patron) => {
+    const linea = lineas.find((l) => patron.test(l) && l.match(MONTO));
+    if (!linea) return null;
+    const montos = linea.match(MONTO);
+    return aNumero(montos[montos.length - 1]);
+  };
+  const subtotal = montoDeLinea(/sub\s*-?\s*total/i);
+  const impuesto = montoDeLinea(/\b(iva|tax|impuesto|sale\s*tax)\b/i);
+
+  return { comercio, fecha, monto, subtotal, impuesto, items: extraerItems(lineas) };
+}
+
+// Productos: líneas "[cantidad] descripción $precio" (p. ej. "2 CAESAR SALAD $23.38" o "PAN $1.20")
+const LINEA_ITEM = /^(?:(\d{1,3})\s*[xX]?\s+)?(.+?)\s+\$?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})$/;
+const NO_ES_ITEM = /total|sub\s*-?\s*total|\biva\b|\btax\b|impuesto|efectivo|cambio|vuelto|tarjeta|visa|mastercard|pago|descuento|propina|amount|saldo/i;
+
+function extraerItems(lineas) {
+  const items = [];
+  for (const linea of lineas) {
+    const m = linea.replace(/\s+/g, ' ').match(LINEA_ITEM);
+    if (!m || NO_ES_ITEM.test(linea)) continue;
+    const descripcion = m[2].replace(/[^\p{L}\p{N}&.,%/' -]/gu, '').trim();
+    if ((descripcion.match(/\p{L}/gu) || []).length < 2) continue;
+    items.push({
+      cantidad: m[1] ? Number(m[1]) : 1,
+      descripcion: descripcion.toLowerCase().replace(/(^|\s)\p{L}/gu, (c) => c.toUpperCase()),
+      precio: aNumero(m[3]),
+    });
+  }
+  return items.slice(0, 40);
 }
