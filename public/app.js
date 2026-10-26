@@ -1,4 +1,5 @@
 import { extraerDatos } from './extraer.js';
+import { leerEnNavegador } from './ocr-navegador.js';
 
 // Dónde está el API:
 // - En GitHub Pages: el servidor publicado en Render (misma base de datos compartida).
@@ -457,13 +458,38 @@ function errorImagen(archivo) {
   return '';
 }
 
-// Sube la imagen, guarda lo que leyó el OCR y llena el formulario del paso 2
-async function leerImagenFactura(archivo) {
-  const fd = new FormData();
-  fd.append('imagen', await comprimirImagen(archivo));
-  const r = await api('/api/facturas/ocr', { method: 'POST', body: fd });
+// Comercios ya registrados (para corregir el nombre leído); se piden una vez por sesión
+let comerciosConocidos = null;
+const obtenerComercios = async () => {
+  comerciosConocidos ??= await api('/api/facturas/comercios').catch(() => []);
+  return comerciosConocidos;
+};
+
+// Lee la factura (en el teléfono; si no se puede, en el servidor), guarda la foto y llena el formulario del paso 2.
+// progreso(texto, porcentaje) informa el avance de la lectura.
+async function leerImagenFactura(archivo, progreso) {
+  let r;
+  let foto = archivo;
+  try {
+    const [leida, conocidos] = await Promise.all([leerEnNavegador(archivo, progreso), obtenerComercios()]);
+    foto = new File([leida.foto], 'factura.jpg', { type: 'image/jpeg' });
+    progreso?.('Guardando la foto…', 100);
+    const fd = new FormData();
+    fd.append('imagen', foto);
+    fd.append('texto', leida.texto);
+    const { archivo: guardado } = await api('/api/facturas/ocr', { method: 'POST', body: fd });
+    const datos = extraerDatos(leida.texto, { lineas: leida.lineas, conocidos });
+    r = { archivo: guardado, texto: leida.texto, ok: Boolean(leida.texto), ...datos };
+  } catch (err) {
+    if (err.status) throw err; // error del servidor al guardar: no tiene sentido reintentar
+    console.warn('Lectura en el navegador no disponible, se usa el servidor:', err);
+    progreso?.('Leyendo la factura en el servidor…', null);
+    const fd = new FormData();
+    fd.append('imagen', await comprimirImagen(archivo));
+    r = await api('/api/facturas/ocr', { method: 'POST', body: fd });
+  }
   if (registro.vistaPrevia) URL.revokeObjectURL(registro.vistaPrevia);
-  Object.assign(registro, { archivo: r.archivo, vistaPrevia: URL.createObjectURL(archivo), texto: r.texto, ocrOk: r.ok, leido: r });
+  Object.assign(registro, { archivo: r.archivo, vistaPrevia: URL.createObjectURL(foto), texto: r.texto, ocrOk: r.ok, leido: r });
   const form = $('#form-datos');
   form.comercio.value = r.comercio || '';
   form.fecha_compra.value = r.fecha || '';
@@ -482,7 +508,9 @@ async function procesarArchivo(archivo) {
   $('#zona-contenido').hidden = true;
   $('#zona-cargando').hidden = false;
   try {
-    await leerImagenFactura(archivo);
+    await leerImagenFactura(archivo, (texto, porcentaje) => {
+      $('#zona-cargando strong').textContent = porcentaje != null ? `${texto} ${porcentaje}%` : texto;
+    });
     mostrarPaso2();
   } catch (err) {
     $('#subida-error').textContent = err.message;
@@ -625,6 +653,7 @@ $('#form-confirmar').addEventListener('submit', async (e) => {
       if (!confirm(`${err.message}. ¿Registrarlo de todas formas?`)) return;
       r = await api('/api/gastos', { method: 'POST', body: { ...cuerpo, forzar: true } });
     }
+    comerciosConocidos = null; // el comercio recién guardado ya cuenta para la próxima lectura
     $('#exito-monto').textContent = dinero(r.gasto.monto);
     $('#exito-saldo').textContent = dinero(r.tarjeta.disponible);
     irPaso(4);
@@ -710,7 +739,14 @@ async function leerDesdeEscaner(archivo, deGaleria = false) {
   img.classList.toggle('de-galeria', deGaleria);
   modoEscaner('leyendo', 'Escaneando factura…');
   try {
-    const r = await leerImagenFactura(archivo);
+    const r = await leerImagenFactura(archivo, (texto, porcentaje) => {
+      $('#esc-estado').textContent = porcentaje != null ? `${texto} ${porcentaje}%` : texto;
+    });
+    // La foto se guarda ya derecha: se muestra así en el escáner
+    if (registro.vistaPrevia) {
+      $('#escaner-foto').src = registro.vistaPrevia;
+      $('#escaner-foto').classList.add('de-galeria');
+    }
     $('#esc-res-comercio').textContent = r.comercio || 'Comercio no detectado';
     const productos = r.items?.length || 0;
     $('#esc-res-detalle').textContent = productos ? `${productos} ${productos === 1 ? 'producto detectado' : 'productos detectados'}` : 'Revisa los datos en el siguiente paso';

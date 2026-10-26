@@ -23,7 +23,16 @@ const subir = multer({
 
 const router = Router();
 
-// Paso 1 del registro: guarda la imagen y devuelve lo que el OCR pudo leer, para que el usuario lo revise
+// Comercios ya registrados: ayudan a corregir el nombre que lea el OCR
+const comerciosConocidos = async () => (await todos(`
+  SELECT comercio FROM gastos WHERE estado != 'anulado' GROUP BY comercio COLLATE NOCASE ORDER BY MAX(id) DESC LIMIT 300
+`)).map((f) => f.comercio);
+
+router.get('/comercios', async (req, res) => res.json(await comerciosConocidos()));
+
+// Paso 1 del registro: guarda la imagen y devuelve lo leído para que el usuario lo revise.
+// Normalmente la factura ya viene leída desde el teléfono (campo "texto") y aquí solo se guarda;
+// si no, se lee en el servidor (más lento en el plan gratuito).
 router.post('/ocr', (req, res, next) => {
   subir.single('imagen')(req, res, async (err) => {
     if (err) {
@@ -33,13 +42,14 @@ router.post('/ocr', (req, res, next) => {
     if (!req.file) return res.status(400).json({ error: 'Selecciona una imagen' });
     try {
       const archivo = crypto.randomBytes(16).toString('hex');
+      if (typeof req.body?.texto === 'string') {
+        await ejecutar('INSERT INTO subidas (id, imagen, tipo, texto, creado_en) VALUES (?, ?, ?, ?, ?)',
+          [archivo, req.file.buffer, req.file.mimetype, req.body.texto.slice(0, 20000), Date.now()]);
+        return res.json({ archivo });
+      }
       let leido = { texto: '', comercio: '', fecha: '', monto: null, ok: false };
       try {
-        // Los comercios ya registrados ayudan a corregir el nombre que lea el OCR
-        const conocidos = (await todos(`
-          SELECT comercio FROM gastos WHERE estado != 'anulado' GROUP BY comercio COLLATE NOCASE ORDER BY MAX(id) DESC LIMIT 300
-        `)).map((f) => f.comercio);
-        leido = { ...await leerFactura(req.file.buffer, conocidos), ok: true };
+        leido = { ...await leerFactura(req.file.buffer, await comerciosConocidos()), ok: true };
       } catch (e) {
         // La imagen queda guardada aunque falle la lectura; el usuario completa los datos a mano
         console.error('OCR:', e.message);
