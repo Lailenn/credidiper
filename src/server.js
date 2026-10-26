@@ -52,4 +52,12 @@ app.use((err, req, res, next) => {
 });
 
 await iniciarBase();
-app.listen(PORT, () => console.log(`Credidiper en http://localhost:${PORT} · base ${esRemota ? 'compartida (Turso)' : 'local'}`));
+app.listen(PORT, (err) => {
+  if (err) {
+    console.error(err.code === 'EADDRINUSE'
+      ? `El puerto ${PORT} ya está en uso: cierra el otro servidor (Ctrl + C en su terminal) y vuelve a intentarlo.`
+      : err);
+    process.exit(1);
+  }
+  console.log(`Credidiper en http://localhost:${PORT} · base ${esRemota ? 'compartida (Turso)' : 'local'}`);
+});
