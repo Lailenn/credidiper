@@ -86,7 +86,9 @@ async function api(url, opciones = {}) {
   if (!esForm) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
   // El plan gratis de Render duerme el servidor tras un rato sin uso; la primera petición tarda en despertarlo
-  const aviso = setTimeout(() => toast('Conectando con el servidor… la primera vez puede tardar hasta un minuto.', 60000), 4000);
+  const aviso = setTimeout(() => {
+    if ($('#vista-cargando').hidden) toast('Conectando con el servidor… la primera vez puede tardar hasta un minuto.', 60000);
+  }, 4000);
   const res = await fetch(API_BASE + url, {
     ...opciones,
     headers,
@@ -199,17 +201,30 @@ async function cargarBase() {
 // ---------- Sesión ----------
 function mostrarLogin() {
   estado.usuario = null;
+  $('#vista-cargando').hidden = true;
   $('#vista-app').hidden = true;
   $('#vista-login').hidden = false;
 }
 
 async function iniciarApp() {
   if (!sesionGuardada.leer()) return mostrarLogin();
+  // Mientras se comprueba la sesión se muestra la pantalla de carga (si el servidor de Render
+  // estaba dormido, esto puede tardar cerca de un minuto)
+  $('#vista-cargando').hidden = false;
+  const aviso = setTimeout(() => {
+    $('#cargando-texto').textContent = 'Conectando con el servidor… Si estuvo un rato sin uso, puede tardar hasta un minuto en despertar.';
+  }, 3000);
   try {
     estado.usuario = await api('/api/auth/me');
-  } catch {
-    return mostrarLogin();
+  } catch (err) {
+    // Sin conexión no se borra la sesión: solo se muestra el login con el aviso
+    mostrarLogin();
+    if (err.status !== 401) $('#login-error').textContent = err.message;
+    return;
+  } finally {
+    clearTimeout(aviso);
   }
+  $('#vista-cargando').hidden = true;
   $('#vista-login').hidden = true;
   $('#vista-app').hidden = false;
   $('#perfil-avatar').textContent = iniciales(estado.usuario.nombre);
