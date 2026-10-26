@@ -3,6 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- La app es de diseño claro: evita que el navegador del teléfono la oscurezca por su cuenta -->
+  <meta name="color-scheme" content="only light">
+  <meta name="theme-color" content="#2b305f">
   <title>Credisiman · Control de gastos</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -377,9 +380,9 @@
     <img id="escaner-foto" alt="" hidden>
     <div class="esc-arriba">
       <button type="button" class="esc-boton" id="esc-cerrar" aria-label="Cerrar escáner"><i data-icon="back"></i></button>
-      <span class="esc-pastilla" id="esc-estado">Apunta a la factura</span>
-      <span class="esc-hueco"></span>
+      <button type="button" class="esc-auto" id="esc-auto" aria-pressed="false" title="Tomar la foto sola cuando la factura esté quieta">Auto</button>
     </div>
+    <span class="esc-pastilla" id="esc-estado">Apunta a la factura</span>
     <div class="esc-marco" id="esc-marco">
       <i class="esq a"></i><i class="esq b"></i><i class="esq c"></i><i class="esq d"></i>
       <div class="esc-linea"></div>
@@ -390,13 +393,16 @@
         <small id="esc-res-detalle"></small>
         <div class="esc-res-fila"><span class="esc-res-total" id="esc-res-total"></span><small id="esc-res-fecha"></small></div>
       </div>
-      <button type="button" class="esc-continuar" id="esc-continuar"><i data-icon="check"></i><span>Continuar</span></button>
+      <button type="button" class="esc-continuar" id="esc-continuar">
+        <small id="esc-res-impuesto"></small>
+        <span>Continuar</span>
+        <span class="esc-flecha"><i data-icon="arrow"></i></span>
+      </button>
     </div>
     <div class="esc-abajo">
       <button type="button" class="esc-boton grande" id="esc-galeria" aria-label="Elegir de la galería"><i data-icon="image"></i></button>
       <button type="button" class="esc-disparo" id="esc-disparo" aria-label="Tomar foto"><span></span></button>
-      <button type="button" class="esc-boton grande" id="esc-linterna" aria-label="Linterna" hidden><i data-icon="flash"></i></button>
-      <button type="button" class="esc-boton grande" id="esc-repetir" aria-label="Tomar otra foto" hidden><i data-icon="repetir"></i></button>
+      <button type="button" class="esc-boton grande" id="esc-linterna" aria-label="Linterna"><i data-icon="flash"></i></button>
     </div>
     <input type="file" id="esc-input-galeria" accept="image/jpeg,image/png,image/webp" hidden>
   </div>

@@ -58,6 +58,7 @@ const ICONOS = {
   historial: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   scan: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3.2"/>',
   flash: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
   repetir: '<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/>',
 };
 const ic = (nombre) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[nombre] || ''}</svg>`;
@@ -620,17 +621,20 @@ $('#form-confirmar').addEventListener('submit', async (e) => {
 $('#btn-otro-gasto').addEventListener('click', abrirRegistro);
 
 // ---------- Escáner de facturas con la cámara ----------
-const escaner = { stream: null, track: null, linterna: false, foto: null };
+const escaner = { stream: null, track: null, linterna: false, foto: null, modo: 'apuntando', auto: false, timerAuto: null };
+const CLAVE_AUTO = 'credisiman-escaner-auto';
+const TEXTO_APUNTAR = () => (escaner.auto ? 'Mantén la factura quieta en el marco' : 'Apunta a la factura');
 
 function modoEscaner(modo, texto) {
+  escaner.modo = modo;
   const el = $('#escaner');
   el.classList.toggle('leyendo', modo === 'leyendo');
   el.classList.toggle('listo', modo === 'listo');
   $('#esc-estado').textContent = texto;
   $('#escaner-foto').hidden = modo === 'apuntando';
   $('#esc-resultado').hidden = modo !== 'listo';
-  $('#esc-repetir').hidden = modo !== 'listo';
-  $('#esc-galeria').hidden = modo === 'listo';
+  $('#esc-disparo').setAttribute('aria-label', modo === 'listo' ? 'Tomar otra foto' : 'Tomar foto');
+  vigilarAuto();
 }
 
 function soltarFoto() {
@@ -661,21 +665,26 @@ async function abrirEscaner() {
   const video = $('#escaner-video');
   video.srcObject = escaner.stream;
   video.play().catch(() => {});
-  $('#esc-linterna').hidden = !escaner.track.getCapabilities?.().torch;
-  $('#esc-linterna').classList.remove('activo');
+  const linterna = $('#esc-linterna');
+  linterna.classList.remove('activo');
+  linterna.classList.toggle('no-disponible', !escaner.track.getCapabilities?.().torch);
+  try { escaner.auto = localStorage.getItem(CLAVE_AUTO) === '1'; } catch { escaner.auto = false; }
+  $('#esc-auto').setAttribute('aria-pressed', String(escaner.auto));
   $('#escaner').hidden = false;
-  modoEscaner('apuntando', 'Apunta a la factura');
+  modoEscaner('apuntando', TEXTO_APUNTAR());
 }
 
 function cerrarEscaner() {
+  clearInterval(escaner.timerAuto);
   escaner.stream?.getTracks().forEach((t) => t.stop());
-  Object.assign(escaner, { stream: null, track: null });
+  Object.assign(escaner, { stream: null, track: null, timerAuto: null });
   $('#escaner-video').srcObject = null;
+  $('#escaner').classList.remove('auto-esperando');
   soltarFoto();
   $('#escaner').hidden = true;
 }
 
-async function leerDesdeEscaner(archivo) {
+async function leerDesdeEscaner(archivo, deGaleria = false) {
   const error = errorImagen(archivo);
   if (error) {
     toast(error);
@@ -683,19 +692,22 @@ async function leerDesdeEscaner(archivo) {
   }
   soltarFoto();
   escaner.foto = URL.createObjectURL(archivo);
-  $('#escaner-foto').src = escaner.foto;
+  const img = $('#escaner-foto');
+  img.src = escaner.foto;
+  img.classList.toggle('de-galeria', deGaleria);
   modoEscaner('leyendo', 'Escaneando factura…');
   try {
     const r = await leerImagenFactura(archivo);
     $('#esc-res-comercio').textContent = r.comercio || 'Comercio no detectado';
     const productos = r.items?.length || 0;
-    $('#esc-res-detalle').textContent = productos ? `${productos} ${productos === 1 ? 'producto' : 'productos'} detectados` : 'Revisa los datos en el siguiente paso';
+    $('#esc-res-detalle').textContent = productos ? `${productos} ${productos === 1 ? 'producto detectado' : 'productos detectados'}` : 'Revisa los datos en el siguiente paso';
     $('#esc-res-total').textContent = r.monto ? dinero(r.monto) : '$ —';
     $('#esc-res-fecha').textContent = r.fecha ? fechaCorta(r.fecha) : '';
+    $('#esc-res-impuesto').textContent = r.impuesto ? `${dinero(r.impuesto)} imp.` : '';
     modoEscaner('listo', r.ok && r.monto ? 'Factura leída' : 'Revisa los datos');
   } catch (err) {
     toast(err.message, 5000);
-    modoEscaner('apuntando', 'Apunta a la factura');
+    modoEscaner('apuntando', TEXTO_APUNTAR());
   }
 }
 
@@ -711,33 +723,89 @@ function capturarFoto() {
   }, 'image/jpeg', 0.92);
 }
 
+function volverAApuntar() {
+  soltarFoto();
+  modoEscaner('apuntando', TEXTO_APUNTAR());
+}
+
+// Modo Auto: cada 300 ms compara una miniatura de la imagen con la anterior; si casi no cambió durante
+// ~1.5 s (la factura está quieta) y la imagen tiene contenido (no es una pared lisa), toma la foto sola.
+function vigilarAuto() {
+  clearInterval(escaner.timerAuto);
+  escaner.timerAuto = null;
+  const activo = escaner.auto && escaner.modo === 'apuntando' && escaner.stream;
+  $('#escaner').classList.toggle('auto-esperando', Boolean(activo));
+  if (!activo) return;
+  const lado = 40;
+  const lienzo = Object.assign(document.createElement('canvas'), { width: lado, height: lado });
+  const ctx = lienzo.getContext('2d', { willReadFrequently: true });
+  let anterior = null;
+  let quietos = 0;
+  escaner.timerAuto = setInterval(() => {
+    const video = $('#escaner-video');
+    if (!video.videoWidth) return;
+    ctx.drawImage(video, 0, 0, lado, lado);
+    const { data } = ctx.getImageData(0, 0, lado, lado);
+    const gris = new Float32Array(lado * lado);
+    let suma = 0;
+    for (let i = 0; i < gris.length; i++) {
+      gris[i] = (data[i * 4] + data[i * 4 + 1] + data[i * 4 + 2]) / 3;
+      suma += gris[i];
+    }
+    const media = suma / gris.length;
+    let varianza = 0;
+    let cambio = 0;
+    for (let i = 0; i < gris.length; i++) {
+      varianza += (gris[i] - media) ** 2;
+      if (anterior) cambio += Math.abs(gris[i] - anterior[i]);
+    }
+    varianza /= gris.length;
+    cambio = anterior ? cambio / gris.length : Infinity;
+    anterior = gris;
+    quietos = cambio < 4 && varianza > 150 ? quietos + 1 : 0;
+    if (quietos >= 5) {
+      clearInterval(escaner.timerAuto);
+      escaner.timerAuto = null;
+      capturarFoto();
+    }
+  }, 300);
+}
+
 $('#btn-tomar-foto').addEventListener('click', abrirEscaner);
 $('#input-camara').addEventListener('change', (e) => {
   procesarArchivo(e.target.files[0]);
   e.target.value = '';
 });
 $('#esc-cerrar').addEventListener('click', cerrarEscaner);
-$('#esc-disparo').addEventListener('click', capturarFoto);
+// Con un resultado en pantalla, el disparador vuelve a la cámara para tomar otra foto
+$('#esc-disparo').addEventListener('click', () => (escaner.modo === 'listo' ? volverAApuntar() : capturarFoto()));
 $('#esc-galeria').addEventListener('click', () => $('#esc-input-galeria').click());
 $('#esc-input-galeria').addEventListener('change', (e) => {
-  if (e.target.files[0]) leerDesdeEscaner(e.target.files[0]);
+  if (e.target.files[0]) leerDesdeEscaner(e.target.files[0], true);
   e.target.value = '';
 });
-$('#esc-repetir').addEventListener('click', () => {
-  soltarFoto();
-  modoEscaner('apuntando', 'Apunta a la factura');
+$('#esc-auto').addEventListener('click', () => {
+  escaner.auto = !escaner.auto;
+  $('#esc-auto').setAttribute('aria-pressed', String(escaner.auto));
+  try { localStorage.setItem(CLAVE_AUTO, escaner.auto ? '1' : '0'); } catch { /* sin almacenamiento */ }
+  if (escaner.modo === 'apuntando') modoEscaner('apuntando', TEXTO_APUNTAR());
+  toast(escaner.auto ? 'Auto: la foto se toma sola cuando la factura esté quieta' : 'Auto desactivado: usa el botón para tomar la foto');
 });
 $('#esc-continuar').addEventListener('click', () => {
   cerrarEscaner();
   mostrarPaso2();
 });
 $('#esc-linterna').addEventListener('click', async () => {
+  if ($('#esc-linterna').classList.contains('no-disponible')) {
+    toast('Este dispositivo no permite encender la linterna desde el navegador');
+    return;
+  }
   try {
     await escaner.track.applyConstraints({ advanced: [{ torch: !escaner.linterna }] });
     escaner.linterna = !escaner.linterna;
     $('#esc-linterna').classList.toggle('activo', escaner.linterna);
   } catch {
-    toast('Este dispositivo no permite encender la linterna desde el navegador');
+    toast('No se pudo encender la linterna');
   }
 });
 document.addEventListener('keydown', (e) => {
