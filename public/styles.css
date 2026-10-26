@@ -114,31 +114,102 @@ label { display: flex; flex-direction: column; gap: 6px; font-size: .88rem; colo
 .login .btn { padding: 12px; }
 
 /* ---------- Estructura ---------- */
-.app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
-.lateral {
-  background: var(--lateral); color: var(--lateral-tinta);
-  display: flex; flex-direction: column; padding: 18px 14px;
-  position: sticky; top: 0; height: 100vh;
-}
-.marca { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 700; font-size: 1.1rem; padding: 4px 8px 22px; }
-.marca-logo { width: 32px; height: 32px; border-radius: 9px; background: var(--marca); display: grid; place-items: center; color: #fff; }
-.menu { display: flex; flex-direction: column; gap: 4px; flex: 1; }
-.menu a {
-  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px;
-  color: var(--lateral-tinta); font-weight: 500; font-size: .93rem; text-decoration: none;
-}
-.menu a:hover { background: rgba(255, 255, 255, .06); color: #fff; }
-.menu a.activo { background: var(--marca); color: #fff; }
-.perfil { display: flex; align-items: center; gap: 10px; padding: 12px 6px 0; border-top: 1px solid rgba(255, 255, 255, .08); }
-.perfil-datos { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.perfil-datos strong { color: #fff; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.perfil-datos small { color: var(--lateral-tinta); text-transform: capitalize; }
-.perfil .btn-icono { color: var(--lateral-tinta); }
-.perfil .btn-icono:hover { background: rgba(255, 255, 255, .08); color: #fff; }
-.avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: .85rem; background: var(--marca-100); color: var(--marca-600); flex: none; }
-.solo-movil, .solo-impresion { display: none; }
+.app { display: grid; grid-template-columns: auto 1fr; min-height: 100vh; }
 
-.principal { padding: 26px 32px 48px; min-width: 0; max-width: 1240px; width: 100%; }
+/* Barra lateral flotante: contraída (solo íconos) o expandida (íconos + nombres) */
+.lateral {
+  --lat-ancho: 92px;
+  --lat-tinta: #aab0d6;
+  --lat-linea: rgba(255, 255, 255, .08);
+  --lat-circulo: rgba(255, 255, 255, .06);
+  --lat-activo: #5b6cf0;
+  --lat-anillo: #8f98f7;
+  --lat-acento: #f08a34;
+  position: sticky; top: 16px; z-index: 20;
+  width: var(--lat-ancho); height: calc(100vh - 32px); margin: 16px 0 16px 16px;
+  display: flex; flex-direction: column; align-items: stretch;
+  padding: 18px 12px 16px;
+  background: linear-gradient(180deg, #2b305f 0%, #1f2347 100%);
+  border-radius: 34px; box-shadow: 0 12px 32px rgba(31, 35, 71, .28);
+  color: var(--lat-tinta);
+  transition: width .25s ease;
+}
+.lateral.expandida { --lat-ancho: 252px; }
+.lat-texto { white-space: nowrap; overflow: hidden; }
+.lateral:not(.expandida) .lat-texto { display: none; }
+
+.lat-perfil { position: relative; display: flex; align-items: center; justify-content: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--lat-linea); }
+.lateral.expandida .lat-perfil { justify-content: flex-start; padding-left: 4px; }
+.lat-avatar {
+  width: 60px; height: 60px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-weight: 800; font-size: 1.3rem;
+  background: linear-gradient(135deg, #8f98f7, #5b45e0); color: #fff;
+  box-shadow: 0 0 0 3px #2b305f, 0 0 0 5px #9aa2f2;
+}
+.lat-perfil-texto { display: flex; flex-direction: column; min-width: 0; }
+.lat-perfil-texto strong { color: #fff; font-size: .95rem; overflow: hidden; text-overflow: ellipsis; }
+.lat-perfil-texto small { color: var(--lat-tinta); }
+.lat-expandir {
+  position: absolute; right: -34px; top: 16px;
+  width: 38px; height: 38px; border-radius: 50%; border: 0; cursor: pointer;
+  display: grid; place-items: center; background: #fff; color: var(--lateral);
+  box-shadow: 0 4px 14px rgba(31, 35, 71, .25); transition: transform .25s;
+}
+.lateral.expandida .lat-expandir { transform: rotate(180deg); }
+.lat-expandir svg.ic { stroke-width: 2.4; }
+
+.lat-estado {
+  position: relative; margin: 16px auto 4px; display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; border-radius: 16px; background: var(--lat-circulo); border: 1px solid var(--lat-linea);
+  font-size: .82rem;
+}
+.lateral.expandida .lat-estado { margin-left: 0; margin-right: 0; }
+.lat-estado-icono { position: relative; display: grid; place-items: center; color: #dfe2ff; }
+.lat-punto { position: absolute; top: -3px; right: -5px; width: 9px; height: 9px; border-radius: 50%; background: #3ccf7f; box-shadow: 0 0 0 2px #2b305f; }
+.lat-estado.sin-conexion .lat-punto { background: #f0604d; }
+
+.menu { flex: 1; display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+.lat-seccion { margin: 14px 0 4px; font-size: .7rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #8e94c2; text-align: center; }
+.lateral.expandida .lat-seccion { text-align: left; padding-left: 10px; }
+.lat-espacio { flex: 1; min-height: 12px; border-bottom: 1px solid var(--lat-linea); margin: 0 4px 2px; }
+
+.menu a, .menu button {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 7px; border-radius: 20px; border: 0; background: none; cursor: pointer;
+  color: var(--lat-tinta); font: inherit; font-weight: 600; font-size: .92rem; text-decoration: none !important;
+  transition: background .15s, color .15s;
+}
+.lateral.expandida .menu a, .lateral.expandida .menu button { justify-content: flex-start; }
+.lat-icono { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--lat-circulo); color: #dfe2ff; transition: background .15s; }
+.menu a:hover .lat-icono, .menu button:hover .lat-icono { background: rgba(255, 255, 255, .12); }
+.menu a:hover, .menu button:hover { color: #fff; }
+.menu a.activo { background: rgba(255, 255, 255, .06); box-shadow: inset 0 0 0 3px var(--lat-anillo); color: #fff; }
+.menu a.activo .lat-icono { background: var(--lat-activo); color: #fff; box-shadow: 0 6px 16px rgba(91, 108, 240, .45); }
+.menu a.activo::before { content: ""; position: absolute; left: 4px; top: 22%; bottom: 22%; width: 4px; border-radius: 4px; background: var(--lat-acento); }
+#btn-salir:hover .lat-icono { background: rgba(240, 96, 77, .2); color: #ffb4a8; }
+
+/* Nombre flotante al pasar el mouse con la barra contraída (fuera de la barra para que no se recorte) */
+.lat-tip {
+  position: fixed; z-index: 60; transform: translateY(-50%); pointer-events: none;
+  background: var(--tinta); color: #fff; padding: 6px 10px; border-radius: 8px; font-size: .8rem; font-weight: 600;
+  white-space: nowrap; box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
+}
+
+/* Pantallas bajas: todo un poco más compacto para que quepa "Cerrar sesión" */
+@media (max-height: 820px) and (min-width: 861px) {
+  .lateral { padding-top: 14px; }
+  .lat-avatar { width: 50px; height: 50px; font-size: 1.1rem; }
+  .lat-perfil { padding-bottom: 10px; }
+  .lat-expandir { top: 10px; }
+  .lat-estado { margin-top: 10px; padding: 8px 14px; }
+  .lat-seccion { margin: 8px 0 2px; }
+  .menu { gap: 3px; }
+  .menu a, .menu button { padding: 5px; }
+  .lat-icono { width: 42px; height: 42px; }
+}
+.solo-impresion { display: none; }
+
+.principal { padding: 26px 32px 48px 52px; min-width: 0; max-width: 1280px; width: 100%; }
 .encabezado { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .encabezado-controles { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .sel-mes { width: auto; min-width: 160px; }
@@ -338,15 +409,24 @@ section[data-vista="personas"] .fila-form { grid-template-columns: minmax(200px,
   .inicio-grid, .reporte-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 860px) {
-  .app { grid-template-columns: 1fr; }
-  .lateral { position: sticky; top: 0; height: auto; z-index: 20; padding: 10px 14px; }
-  .marca { padding: 4px; }
-  .solo-movil { display: inline-grid; }
-  .btn-menu { margin-left: auto; color: #fff; }
-  .menu, .perfil { display: none; }
-  .lateral.abierto .menu, .lateral.abierto .perfil { display: flex; }
-  .lateral.abierto .menu { padding-top: 10px; }
-  .principal { padding: 20px 16px 40px; }
+  /* En el celular la barra sigue a la izquierda, más delgada; al expandirla se abre encima del contenido */
+  .app { display: block; }
+  .lateral {
+    --lat-ancho: 68px;
+    position: fixed; top: 8px; left: 8px; bottom: 8px; height: auto; margin: 0;
+    padding: 12px 6px 10px; border-radius: 26px;
+  }
+  .lateral.expandida { --lat-ancho: 236px; box-shadow: 0 0 0 100vmax rgba(20, 18, 40, .45), 0 12px 32px rgba(31, 35, 71, .35); }
+  .lat-avatar { width: 44px; height: 44px; font-size: 1rem; box-shadow: 0 0 0 2px #2b305f, 0 0 0 4px #9aa2f2; }
+  .lat-perfil { padding-bottom: 10px; }
+  .lat-expandir { width: 32px; height: 32px; right: -26px; top: 7px; }
+  .lat-estado { margin-top: 10px; padding: 8px 12px; }
+  .lat-seccion { margin: 8px 0 2px; font-size: .58rem; letter-spacing: .06em; }
+  .menu { gap: 2px; }
+  .menu a, .menu button { padding: 4px; border-radius: 18px; }
+  .lat-icono { width: 42px; height: 42px; }
+  .lat-tip { display: none; }
+  .principal { padding: 20px 14px 40px 104px; }
   .dos-columnas, .dos-columnas.invertido { grid-template-columns: 1fr; }
   .dos-columnas.invertido .col-imagen { order: -1; }
   .stats { grid-template-columns: 1fr; }

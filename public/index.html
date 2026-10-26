@@ -42,23 +42,32 @@
   <!-- ================= Aplicación ================= -->
   <div id="vista-app" class="app" hidden>
     <aside class="lateral" id="lateral">
-      <div class="marca">
-        <span class="marca-logo"><i data-icon="card"></i></span> Credisiman
-        <button class="btn-icono solo-movil btn-menu" id="btn-menu" aria-label="Menú"><i data-icon="menu"></i></button>
+      <div class="lat-perfil">
+        <span class="lat-avatar" id="perfil-avatar"></span>
+        <div class="lat-perfil-texto lat-texto"><strong id="perfil-nombre"></strong><small id="perfil-rol"></small></div>
+        <button type="button" class="lat-expandir" id="btn-expandir" aria-label="Expandir menú" aria-expanded="false"><i data-icon="chevron"></i></button>
       </div>
+
+      <div class="lat-estado" id="estado-conexion" data-nombre="Conectado al servidor">
+        <span class="lat-estado-icono"><i data-icon="cloud"></i><span class="lat-punto"></span></span>
+        <span class="lat-texto" id="estado-conexion-texto">Conectado</span>
+      </div>
+
       <nav class="menu" id="menu">
-        <a href="#inicio" data-vista="inicio"><i data-icon="home"></i> Inicio</a>
-        <a href="#registrar" data-vista="registrar"><i data-icon="edit"></i> Registrar gasto</a>
-        <a href="#gastos" data-vista="gastos"><i data-icon="list"></i> Mis gastos</a>
-        <a href="#personas" data-vista="personas"><i data-icon="user"></i> Personas</a>
-        <a href="#reportes" data-vista="reportes"><i data-icon="chart"></i> Reportes</a>
-        <a href="#configuracion" data-vista="configuracion"><i data-icon="settings"></i> Configuración</a>
+        <p class="lat-seccion">Principal</p>
+        <a href="#inicio" data-vista="inicio" data-nombre="Inicio"><span class="lat-icono"><i data-icon="home"></i></span><span class="lat-texto">Inicio</span></a>
+        <a href="#registrar" data-vista="registrar" data-nombre="Registrar gasto"><span class="lat-icono"><i data-icon="factura"></i></span><span class="lat-texto">Registrar gasto</span></a>
+        <a href="#gastos" data-vista="gastos" data-nombre="Mis gastos"><span class="lat-icono"><i data-icon="historial"></i></span><span class="lat-texto">Mis gastos</span></a>
+        <a href="#reportes" data-vista="reportes" data-nombre="Reportes"><span class="lat-icono"><i data-icon="chart"></i></span><span class="lat-texto">Reportes</span></a>
+
+        <p class="lat-seccion">Gestión</p>
+        <a href="#personas" data-vista="personas" data-nombre="Personas"><span class="lat-icono"><i data-icon="users"></i></span><span class="lat-texto">Personas</span></a>
+        <a href="#configuracion" data-vista="configuracion" data-nombre="Configuración"><span class="lat-icono"><i data-icon="settings"></i></span><span class="lat-texto">Configuración</span></a>
+
+        <div class="lat-espacio"></div>
+        <p class="lat-seccion">General</p>
+        <button type="button" id="btn-salir" data-nombre="Cerrar sesión"><span class="lat-icono"><i data-icon="logout"></i></span><span class="lat-texto">Cerrar sesión</span></button>
       </nav>
-      <div class="perfil">
-        <span class="avatar" id="perfil-avatar"></span>
-        <div class="perfil-datos"><strong id="perfil-nombre"></strong><small id="perfil-rol"></small></div>
-        <button class="btn-icono" id="btn-salir" title="Cerrar sesión" aria-label="Cerrar sesión"><i data-icon="logout"></i></button>
-      </div>
     </aside>
 
     <main class="principal">

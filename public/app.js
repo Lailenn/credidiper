@@ -50,6 +50,10 @@ const ICONOS = {
   image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>',
   pencil: '<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   key: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.3-9.3M17 6l3 3M15 8l2 2"/>',
+  chevron: '<path d="m9 6 6 6-6 6"/>',
+  cloud: '<path d="M7 18.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.9 9.5 4.5 4.5 0 0 1 17.5 18.5z"/>',
+  factura: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 10.5v7M14.2 12h-3a1.3 1.3 0 0 0 0 2.6h1.6a1.3 1.3 0 0 1 0 2.6H9.8"/>',
+  historial: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
 };
 const ic = (nombre) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[nombre] || ''}</svg>`;
 
@@ -87,7 +91,11 @@ async function api(url, opciones = {}) {
     ...opciones,
     headers,
     body: esForm ? opciones.body : opciones.body ? JSON.stringify(opciones.body) : undefined,
+  }).then((respuesta) => {
+    marcarConexion(true);
+    return respuesta;
   }).catch(() => {
+    marcarConexion(false);
     throw new Error(API_BASE === API_PRODUCCION
       ? 'No se pudo conectar con el servidor. Revisa tu internet e inténtalo de nuevo.'
       : 'No hay conexión con el servidor. Ejecuta "npm run dev" en la terminal.');
@@ -102,6 +110,14 @@ async function api(url, opciones = {}) {
   }
   if (!res.ok) throw Object.assign(new Error(datos.error || 'Error inesperado'), { status: res.status, datos });
   return datos;
+}
+
+// Indicador de la barra lateral: punto verde si el servidor responde, rojo si no
+function marcarConexion(ok) {
+  const el = $('#estado-conexion');
+  el.classList.toggle('sin-conexion', !ok);
+  el.dataset.nombre = ok ? 'Conectado al servidor' : 'Sin conexión con el servidor';
+  $('#estado-conexion-texto').textContent = ok ? 'Conectado' : 'Sin conexión';
 }
 
 let toastTimer;
@@ -239,7 +255,45 @@ $('#btn-salir').addEventListener('click', async () => {
   mostrarLogin();
 });
 
-$('#btn-menu').addEventListener('click', () => $('#lateral').classList.toggle('abierto'));
+// Barra lateral contraída o expandida; se recuerda la elección en este navegador
+const CLAVE_MENU = 'credisiman-menu-expandido';
+function expandirMenu(expandido) {
+  $('#lateral').classList.toggle('expandida', expandido);
+  const boton = $('#btn-expandir');
+  boton.setAttribute('aria-expanded', String(expandido));
+  boton.setAttribute('aria-label', expandido ? 'Contraer menú' : 'Expandir menú');
+}
+// En el celular siempre arranca contraída para no tapar la pantalla
+try { expandirMenu(localStorage.getItem(CLAVE_MENU) === '1' && !matchMedia('(max-width: 860px)').matches); } catch { /* sin almacenamiento */ }
+$('#btn-expandir').addEventListener('click', () => {
+  const expandido = !$('#lateral').classList.contains('expandida');
+  expandirMenu(expandido);
+  try { localStorage.setItem(CLAVE_MENU, expandido ? '1' : '0'); } catch { /* sin almacenamiento */ }
+  latTip.hidden = true;
+});
+
+// Con la barra contraída, el nombre de cada opción aparece al pasar el mouse
+const latTip = Object.assign(document.createElement('div'), { className: 'lat-tip', hidden: true });
+document.body.append(latTip);
+$('#lateral').addEventListener('mouseover', (e) => {
+  const item = e.target.closest('[data-nombre]');
+  if (!item || $('#lateral').classList.contains('expandida')) { latTip.hidden = true; return; }
+  const caja = item.getBoundingClientRect();
+  latTip.textContent = item.dataset.nombre;
+  latTip.style.left = `${$('#lateral').getBoundingClientRect().right + 12}px`;
+  latTip.style.top = `${caja.top + caja.height / 2}px`;
+  latTip.hidden = false;
+});
+$('#lateral').addEventListener('mouseleave', () => { latTip.hidden = true; });
+
+// En el celular la barra expandida tapa el contenido: se cierra al elegir una opción o al tocar fuera
+const esCelular = () => matchMedia('(max-width: 860px)').matches;
+$('#menu').addEventListener('click', (e) => {
+  if (esCelular() && e.target.closest('a')) expandirMenu(false);
+});
+document.addEventListener('click', (e) => {
+  if (esCelular() && $('#lateral').classList.contains('expandida') && !e.target.closest('#lateral')) expandirMenu(false);
+});
 
 // ---------- Navegación (#vista o #gasto/12) ----------
 const vistas = {
@@ -259,7 +313,6 @@ function navegar() {
   const seccion = vista === 'gasto' ? 'detalle' : vista;
   $$('.principal > section').forEach((s) => { s.hidden = s.dataset.vista !== seccion; });
   $$('#menu a').forEach((a) => a.classList.toggle('activo', a.dataset.vista === (vista === 'gasto' ? 'gastos' : vista)));
-  $('#lateral').classList.remove('abierto');
   window.scrollTo(0, 0);
   conError(null, () => vistas[vista](param));
 }
