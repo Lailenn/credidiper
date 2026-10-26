@@ -1156,4 +1156,6 @@ visor.addEventListener('click', () => { visor.hidden = true; });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') visor.hidden = true; });
 
 pintarIconos();
+// Despierta el servidor y la base desde ya (si estaban dormidos tardan en responder)
+fetch(`${API_BASE}/api/salud`).catch(() => {});
 iniciarApp();

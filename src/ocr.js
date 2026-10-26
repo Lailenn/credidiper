@@ -25,15 +25,34 @@ const obtenerWorker = () => {
   return workerPromesa;
 };
 
-export async function leerFactura(imagen) {
+// Líneas con su alto en la foto: el nombre del comercio suele estar en la letra más grande
+function lineasConAlto(data) {
+  const lineas = [];
+  for (const bloque of data.blocks || []) {
+    for (const parrafo of bloque.paragraphs || []) {
+      for (const linea of parrafo.lines || []) {
+        const texto = linea.text.trim();
+        if (texto) lineas.push({ texto, alto: linea.bbox.y1 - linea.bbox.y0, confianza: linea.confidence });
+      }
+    }
+  }
+  return lineas;
+}
+
+// conocidos: comercios que ya se registraron, para corregir lo que el OCR lea con errores
+export async function leerFactura(imagen, conocidos = []) {
   let temporizador;
   const limite = new Promise((_, reject) => {
     temporizador = setTimeout(() => reject(new Error('La lectura de la factura tardó demasiado')), TIEMPO_MAXIMO);
   });
   try {
-    const { data } = await Promise.race([obtenerWorker().then((w) => w.recognize(imagen)), limite]);
+    // rotateAuto endereza fotos un poco giradas; blocks devuelve cada línea con su tamaño
+    const { data } = await Promise.race([
+      obtenerWorker().then((w) => w.recognize(imagen, { rotateAuto: true }, { text: true, blocks: true })),
+      limite,
+    ]);
     const texto = data.text.trim();
-    return { texto, ...extraerDatos(texto) };
+    return { texto, ...extraerDatos(texto, { lineas: lineasConAlto(data), conocidos }) };
   } catch (err) {
     // Si el lector quedó a medio iniciar, se descarta para que el próximo intento empiece de cero
     const pendiente = workerPromesa;

@@ -150,12 +150,15 @@ export async function iniciarBase() {
     CREATE INDEX IF NOT EXISTS idx_pagos_persona ON pagos (persona_id);
   `);
 
-  // Limpieza: sesiones vencidas y subidas abandonadas (más de un día)
-  await ejecutar('DELETE FROM tokens WHERE expira <= ?', [Date.now()]);
-  await ejecutar('DELETE FROM subidas WHERE creado_en <= ?', [Date.now() - 24 * 60 * 60 * 1000]);
+  // Limpieza (sesiones vencidas y subidas abandonadas de más de un día) y conteo de usuarios, en un solo viaje
+  const [, , conteo] = await lote([
+    ['DELETE FROM tokens WHERE expira <= ?', [Date.now()]],
+    ['DELETE FROM subidas WHERE creado_en <= ?', [Date.now() - 24 * 60 * 60 * 1000]],
+    ['SELECT COUNT(*) AS total FROM usuarios'],
+  ]);
+  const total = Number(conteo.rows[0].total);
 
   // Primer arranque: crea un administrador para poder entrar
-  const { total } = await uno('SELECT COUNT(*) AS total FROM usuarios');
   if (total === 0) {
     const correo = process.env.ADMIN_CORREO || 'admin@credidiper.local';
     const password = process.env.ADMIN_PASSWORD || 'admin123';
@@ -164,6 +167,11 @@ export async function iniciarBase() {
     console.log(`Administrador creado: ${correo} / ${password}  (cambia la contraseña)`);
   }
 }
+
+// Turso "duerme" la base tras un rato sin consultas y la primera tarda varios segundos en responder.
+// Mientras el servidor esté encendido, una consulta mínima cada 4 minutos la mantiene despierta.
+export const despertarBase = () => cliente.execute('SELECT 1').catch(() => {});
+if (esRemota) setInterval(despertarBase, 4 * 60 * 1000).unref();
 
 export const redondear = (n) => Math.round(n * 100) / 100;
 

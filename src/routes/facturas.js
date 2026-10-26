@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
-import { uno, ejecutar } from '../db.js';
+import { todos, uno, ejecutar } from '../db.js';
 import { esAdmin } from '../auth.js';
 import { leerFactura } from '../ocr.js';
 import * as v from '../validar.js';
@@ -35,7 +35,11 @@ router.post('/ocr', (req, res, next) => {
       const archivo = crypto.randomBytes(16).toString('hex');
       let leido = { texto: '', comercio: '', fecha: '', monto: null, ok: false };
       try {
-        leido = { ...await leerFactura(req.file.buffer), ok: true };
+        // Los comercios ya registrados ayudan a corregir el nombre que lea el OCR
+        const conocidos = (await todos(`
+          SELECT comercio FROM gastos WHERE estado != 'anulado' GROUP BY comercio COLLATE NOCASE ORDER BY MAX(id) DESC LIMIT 300
+        `)).map((f) => f.comercio);
+        leido = { ...await leerFactura(req.file.buffer, conocidos), ok: true };
       } catch (e) {
         // La imagen queda guardada aunque falle la lectura; el usuario completa los datos a mano
         console.error('OCR:', e.message);

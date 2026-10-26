@@ -1,13 +1,24 @@
 import { Router } from 'express';
-import { todos, ejecutar, saldoTarjeta } from '../db.js';
+import { todos, ejecutar, saldoTarjeta, redondear } from '../db.js';
 import { requireRol } from '../auth.js';
 import * as v from '../validar.js';
 
 const router = Router();
 
+// Todas las tarjetas con su saldo en una sola consulta
 router.get('/', async (req, res) => {
-  const ids = await todos('SELECT id FROM tarjetas ORDER BY nombre');
-  res.json(await Promise.all(ids.map(({ id }) => saldoTarjeta(id))));
+  const filas = await todos(`
+    SELECT t.*,
+      COALESCE((SELECT SUM(monto) FROM gastos WHERE tarjeta_id = t.id AND estado = 'confirmado'), 0) AS confirmados,
+      COALESCE((SELECT SUM(monto) FROM gastos WHERE tarjeta_id = t.id AND estado = 'pendiente'), 0) AS pendientes
+    FROM tarjetas t ORDER BY t.nombre
+  `);
+  res.json(filas.map((t) => ({
+    ...t,
+    confirmados: redondear(t.confirmados),
+    pendientes: redondear(t.pendientes),
+    disponible: redondear(t.limite - t.saldo_inicial - t.confirmados),
+  })));
 });
 
 router.get('/:id', async (req, res) => {

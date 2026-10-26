@@ -13,23 +13,43 @@ export async function crearSesion(usuarioId, recordar) {
   return token;
 }
 
+// Sesiones ya comprobadas, en memoria por unos minutos: así cada petición no tiene que
+// consultar la base (cada consulta a Turso es un viaje por internet)
+const sesionesEnMemoria = new Map();
+const MEMORIA_MS = 5 * 60 * 1000;
+export const olvidarSesiones = () => sesionesEnMemoria.clear();
+
 export async function cerrarSesion(token) {
-  if (token) await ejecutar('DELETE FROM tokens WHERE hash = ?', [hashToken(token)]);
+  if (!token) return;
+  sesionesEnMemoria.delete(hashToken(token));
+  await ejecutar('DELETE FROM tokens WHERE hash = ?', [hashToken(token)]);
 }
 
 // Las imágenes se piden con <img src>, que no puede mandar cabeceras: para ellas se acepta ?t=token
 export const tokenDe = (req) => req.get('authorization')?.replace(/^Bearer\s+/i, '') || req.query.t || null;
 
-// Se vuelve a leer el usuario en cada petición para que desactivarlo o cambiarle el rol tenga efecto inmediato
 export async function requireAuth(req, res, next) {
   const token = tokenDe(req);
-  const usuario = token && await uno(`
-    SELECT u.id, u.nombre, u.correo, r.nombre AS rol
-    FROM tokens k
-    JOIN usuarios u ON u.id = k.usuario_id
-    JOIN roles r ON r.id = u.rol_id
-    WHERE k.hash = ? AND k.expira > ? AND u.activo = 1
-  `, [hashToken(token), Date.now()]);
+  if (!token) return res.status(401).json({ error: 'Debes iniciar sesión' });
+  const hash = hashToken(token);
+  const guardada = sesionesEnMemoria.get(hash);
+  let usuario = guardada && guardada.hasta > Date.now() ? guardada.usuario : null;
+  if (!usuario) {
+    const fila = await uno(`
+      SELECT u.id, u.nombre, u.correo, r.nombre AS rol, k.expira
+      FROM tokens k
+      JOIN usuarios u ON u.id = k.usuario_id
+      JOIN roles r ON r.id = u.rol_id
+      WHERE k.hash = ? AND k.expira > ? AND u.activo = 1
+    `, [hash, Date.now()]);
+    if (fila) {
+      const { expira, ...datos } = fila;
+      usuario = datos;
+      sesionesEnMemoria.set(hash, { usuario, hasta: Math.min(Date.now() + MEMORIA_MS, expira) });
+    } else {
+      sesionesEnMemoria.delete(hash);
+    }
+  }
   if (!usuario) return res.status(401).json({ error: 'Debes iniciar sesión' });
   req.usuario = usuario;
   next();

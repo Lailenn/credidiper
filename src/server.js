@@ -1,6 +1,6 @@
 import express from 'express';
 import path from 'node:path';
-import { iniciarBase, esRemota } from './db.js';
+import { iniciarBase, esRemota, despertarBase } from './db.js';
 import { requireAuth } from './auth.js';
 import authRoutes from './routes/auth.js';
 import usuariosRoutes from './routes/usuarios.js';
@@ -33,7 +33,11 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
-app.get('/api/salud', (req, res) => res.json({ ok: true }));
+// La página la llama apenas abre, para despertar el servidor y la base mientras se escribe la contraseña
+app.get('/api/salud', async (req, res) => {
+  await despertarBase();
+  res.json({ ok: true });
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/usuarios', requireAuth, usuariosRoutes);
 app.use('/api/personas', requireAuth, personasRoutes);

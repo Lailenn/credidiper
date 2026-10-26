@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { todos, uno, ejecutar } from '../db.js';
-import { requireRol } from '../auth.js';
+import { requireRol, olvidarSesiones } from '../auth.js';
 import * as v from '../validar.js';
 
 const router = Router();
@@ -59,6 +59,7 @@ router.patch('/:id', async (req, res) => {
   if (req.body.activo === false || req.body.password !== undefined) {
     await ejecutar('DELETE FROM tokens WHERE usuario_id = ?', [usuarioId]);
   }
+  olvidarSesiones();
   res.json({ ok: true });
 });
 
