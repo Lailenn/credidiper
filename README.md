@@ -8,6 +8,12 @@ Aplicación web para registrar los gastos de una tarjeta Credisiman y calcular e
 
 - **OCR:** Tesseract.js lee el comercio, la fecha y el total de la foto de la factura (`src/ocr.js`)
 
+## Demostración en línea
+
+https://lailenn.github.io/credidiper/ — entra con `admin@credidiper.local` / `admin123`.
+
+GitHub Pages no puede ejecutar Node, así que ahí la app corre en **modo demostración** (`public/demo.js`): imita el API en el navegador, guarda los datos en `localStorage` (solo en ese navegador), lee las facturas con Tesseract.js en el navegador y arranca con datos de ejemplo. Se puede probar en local agregando `?demo` a la URL.
+
 ## Requisitos
 
 Node.js 24 o superior (trae `node:sqlite` incluido).

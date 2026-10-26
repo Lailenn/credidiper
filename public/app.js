@@ -4,6 +4,10 @@ const API_PUERTO = '3000';
 const esLiveServer = /^55\d\d$/.test(location.port);
 const API_BASE = esLiveServer ? `${location.protocol}//${location.hostname}:${API_PUERTO}` : '';
 
+// En GitHub Pages no hay servidor: la app usa el modo demostración, que guarda todo en el navegador
+const MODO_DEMO = location.hostname.endsWith('github.io') || new URLSearchParams(location.search).has('demo');
+const demo = MODO_DEMO ? await import('./demo.js') : null;
+
 // Colores por persona: orden fijo validado (contraste y daltonismo); el color sigue a la persona, no a su posición
 const PALETA = ['#6250d6', '#eb6834', '#2a78d6', '#eda100', '#1baf7a', '#e87ba4', '#008300', '#e34948'];
 const COLOR_OTROS = '#8a87a3';
@@ -58,9 +62,19 @@ const iniciales = (nombre) => nombre.split(/\s+/).filter(Boolean).slice(0, 2).ma
 // Contenido de data-tip: el navegador lo decodifica al leerlo y luego se inserta como HTML, por eso se escapa dos veces
 const tip = (titulo, texto) => esc(`<b>${esc(titulo)}</b>${texto}`);
 const datosForm = (form) => Object.fromEntries(new FormData(form));
-const urlFactura = (gastoId, descargar) => `${API_BASE}/api/facturas/${gastoId}/imagen${descargar ? '?descargar=1' : ''}`;
+const urlFactura = (gastoId, descargar) => (demo
+  ? demo.urlFactura(gastoId)
+  : `${API_BASE}/api/facturas/${gastoId}/imagen${descargar ? '?descargar=1' : ''}`);
 
 async function api(url, opciones = {}) {
+  if (demo) {
+    try {
+      return await demo.api(url, opciones);
+    } catch (err) {
+      if (err.status === 401 && url !== '/api/auth/login') mostrarLogin();
+      throw err;
+    }
+  }
   const esForm = opciones.body instanceof FormData;
   const res = await fetch(API_BASE + url, {
     ...opciones,
@@ -508,6 +522,7 @@ async function cargarDetalle(id) {
   const descargar = $('#detalle-descargar');
   descargar.hidden = !g.tiene_factura;
   descargar.href = urlFactura(g.id, true);
+  descargar.download = `factura-${g.id}.jpg`;
   const estadoTxt = { confirmado: ['estado-ok', 'Confirmado'], pendiente: ['estado-pendiente', 'Pendiente'], anulado: ['estado-mal', 'Anulado'] }[g.estado];
   $('#detalle-datos').innerHTML = `
     <dt>Comercio</dt><dd>${esc(g.comercio)}</dd>
@@ -758,6 +773,22 @@ document.addEventListener('click', (e) => {
 });
 visor.addEventListener('click', () => { visor.hidden = true; });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') visor.hidden = true; });
+
+// ---------- Modo demostración ----------
+if (demo) {
+  $('#aviso-demo').hidden = false;
+  $('#login-demo').hidden = false;
+  $('#login-demo b').textContent = `${demo.CREDENCIALES.correo} / ${demo.CREDENCIALES.password}`;
+  const form = $('#form-login');
+  form.correo.value = demo.CREDENCIALES.correo;
+  form.password.value = demo.CREDENCIALES.password;
+  $('#btn-reiniciar-demo').addEventListener('click', async () => {
+    if (!confirm('¿Borrar todos los datos de la demostración y volver a los datos de ejemplo?')) return;
+    await demo.reiniciar();
+    location.hash = '';
+    mostrarLogin();
+  });
+}
 
 pintarIconos();
 iniciarApp();
