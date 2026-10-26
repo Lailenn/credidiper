@@ -3,25 +3,20 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
-import { db } from '../db.js';
+import { uno, ejecutar } from '../db.js';
 import { esAdmin } from '../auth.js';
 import { leerFactura } from '../ocr.js';
 import * as v from '../validar.js';
 
-export const CARPETA_FACTURAS = path.resolve('uploads', 'facturas');
-fs.mkdirSync(CARPETA_FACTURAS, { recursive: true });
-
-const EXTENSIONES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
-export const NOMBRE_ARCHIVO = /^[a-f0-9]{32}\.(jpg|png|webp)$/;
+const TIPOS = ['image/jpeg', 'image/png', 'image/webp'];
+// Facturas de la versión anterior, guardadas como archivo en disco
+const CARPETA_ANTIGUA = path.resolve('uploads', 'facturas');
 
 const subir = multer({
-  storage: multer.diskStorage({
-    destination: CARPETA_FACTURAS,
-    filename: (req, file, cb) => cb(null, crypto.randomBytes(16).toString('hex') + EXTENSIONES[file.mimetype]),
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (EXTENSIONES[file.mimetype]) return cb(null, true);
+    if (TIPOS.includes(file.mimetype)) return cb(null, true);
     cb(new v.ErrorValidacion('Formato no admitido. Usa JPG, PNG o WEBP'));
   },
 });
@@ -37,25 +32,38 @@ router.post('/ocr', (req, res, next) => {
     }
     if (!req.file) return res.status(400).json({ error: 'Selecciona una imagen' });
     try {
-      const leido = await leerFactura(req.file.path);
-      res.json({ archivo: req.file.filename, ...leido, ok: true });
+      const archivo = crypto.randomBytes(16).toString('hex');
+      let leido = { texto: '', comercio: '', fecha: '', monto: null, ok: false };
+      try {
+        leido = { ...await leerFactura(req.file.buffer), ok: true };
+      } catch (e) {
+        // La imagen queda guardada aunque falle la lectura; el usuario completa los datos a mano
+        console.error('OCR:', e.message);
+      }
+      await ejecutar('INSERT INTO subidas (id, imagen, tipo, texto, creado_en) VALUES (?, ?, ?, ?, ?)',
+        [archivo, req.file.buffer, req.file.mimetype, leido.texto, Date.now()]);
+      res.json({ archivo, ...leido });
     } catch (e) {
-      console.error('OCR:', e.message);
-      // La imagen queda guardada aunque falle la lectura; el usuario completa los datos a mano
-      res.json({ archivo: req.file.filename, texto: '', comercio: '', fecha: '', monto: null, ok: false });
+      next(e);
     }
   });
 });
 
-router.get('/:gastoId/imagen', (req, res) => {
-  const factura = db.prepare(`
-    SELECT f.ruta_archivo, g.usuario_id FROM facturas f JOIN gastos g ON g.id = f.gasto_id WHERE f.gasto_id = ?
-  `).get(v.id(req.params.gastoId, 'gasto'));
-  if (!factura || (!esAdmin(req) && factura.usuario_id !== req.usuario.id) || !NOMBRE_ARCHIVO.test(factura.ruta_archivo)) {
+router.get('/:gastoId/imagen', async (req, res) => {
+  const gastoId = v.id(req.params.gastoId, 'gasto');
+  const factura = await uno(`
+    SELECT f.imagen, f.tipo, f.ruta_archivo, g.usuario_id FROM facturas f JOIN gastos g ON g.id = f.gasto_id WHERE f.gasto_id = ?
+  `, [gastoId]);
+  if (!factura || (!esAdmin(req) && factura.usuario_id !== req.usuario.id)) {
     return res.status(404).json({ error: 'Factura no encontrada' });
   }
-  if (req.query.descargar) res.attachment(`factura-${req.params.gastoId}${path.extname(factura.ruta_archivo)}`);
-  res.sendFile(path.join(CARPETA_FACTURAS, factura.ruta_archivo));
+  const extension = { 'image/png': '.png', 'image/webp': '.webp' }[factura.tipo] || '.jpg';
+  if (req.query.descargar) res.attachment(`factura-${gastoId}${extension}`);
+  res.set('Cache-Control', 'private, max-age=86400');
+  if (factura.imagen) return res.type(factura.tipo || 'image/jpeg').send(Buffer.from(factura.imagen));
+  const antigua = factura.ruta_archivo && path.join(CARPETA_ANTIGUA, path.basename(factura.ruta_archivo));
+  if (antigua && fs.existsSync(antigua)) return res.sendFile(antigua);
+  res.status(404).json({ error: 'Factura no encontrada' });
 });
 
 export default router;

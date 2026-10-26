@@ -1,0 +1,17 @@
+# Configuración para Render (servidor Node). Las claves de Turso se ponen en el panel de Render, no aquí.
+services:
+  - type: web
+    name: credidiper
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/salud
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

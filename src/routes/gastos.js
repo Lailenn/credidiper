@@ -1,9 +1,6 @@
 import { Router } from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
-import { db, saldoTarjeta } from '../db.js';
+import { todos, uno, ejecutar, lote, saldoTarjeta, ahoraLocal, SQL_DISPONIBLE } from '../db.js';
 import { esAdmin } from '../auth.js';
-import { CARPETA_FACTURAS, NOMBRE_ARCHIVO } from './facturas.js';
 import * as v from '../validar.js';
 
 const router = Router();
@@ -19,9 +16,11 @@ const SELECT_GASTOS = `
 `;
 
 const MES = /^\d{4}-\d{2}$/;
+const buscarGasto = (id) => uno(`${SELECT_GASTOS} WHERE g.id = ?`, [id]);
+const errorDisponible = (disponible) => `El monto supera el disponible de la tarjeta ($${disponible.toFixed(2)})`;
 
 // El administrador ve todos los gastos; cada usuario solo los que registró
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   const filtros = [];
   const valores = [];
   if (!esAdmin(req)) {
@@ -51,12 +50,12 @@ router.get('/', (req, res) => {
     valores.push(patron, patron);
   }
   const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
-  res.json(db.prepare(`${SELECT_GASTOS} ${where} ORDER BY g.fecha_compra DESC, g.id DESC`).all(...valores)
-    .map(({ texto_ocr, ...g }) => g));
+  const gastos = await todos(`${SELECT_GASTOS} ${where} ORDER BY g.fecha_compra DESC, g.id DESC`, valores);
+  res.json(gastos.map(({ texto_ocr, ...g }) => g));
 });
 
-router.get('/:id', (req, res) => {
-  const gasto = db.prepare(`${SELECT_GASTOS} WHERE g.id = ?`).get(v.id(req.params.id, 'id'));
+router.get('/:id', async (req, res) => {
+  const gasto = await buscarGasto(v.id(req.params.id, 'id'));
   if (!gasto || (!esAdmin(req) && gasto.usuario_id !== req.usuario.id)) {
     return res.status(404).json({ error: 'Gasto no encontrado' });
   }
@@ -64,7 +63,7 @@ router.get('/:id', (req, res) => {
 });
 
 // Al guardar, el gasto queda confirmado y se descuenta del disponible (el usuario ya revisó los datos)
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const tarjetaId = v.id(req.body.tarjeta_id, 'tarjeta');
   const personaId = v.id(req.body.persona_id, 'persona');
   const comercio = v.texto(req.body.comercio, 'comercio');
@@ -72,60 +71,59 @@ router.post('/', (req, res) => {
   const monto = v.dinero(req.body.monto, 'monto', { minExclusivo: true });
   const nota = typeof req.body.nota === 'string' && req.body.nota.trim() ? v.texto(req.body.nota, 'nota', { max: 500 }) : null;
 
-  const archivo = req.body.archivo || null;
-  if (archivo) {
-    if (!NOMBRE_ARCHIVO.test(archivo) || !fs.existsSync(path.join(CARPETA_FACTURAS, archivo))) {
-      throw new v.ErrorValidacion('La imagen de la factura no es válida, vuelve a subirla');
-    }
-    if (db.prepare('SELECT 1 FROM facturas WHERE ruta_archivo = ?').get(archivo)) {
-      throw new v.ErrorValidacion('Esa factura ya está asociada a otro gasto');
-    }
+  const archivo = typeof req.body.archivo === 'string' && req.body.archivo ? req.body.archivo : null;
+  if (archivo && !(await uno('SELECT 1 FROM subidas WHERE id = ?', [archivo]))) {
+    throw new v.ErrorValidacion('La imagen de la factura ya no está disponible, vuelve a subirla');
   }
 
-  const tarjeta = saldoTarjeta(tarjetaId);
+  const tarjeta = await saldoTarjeta(tarjetaId);
   if (!tarjeta) return res.status(404).json({ error: 'Tarjeta no encontrada' });
   if (tarjeta.estado !== 'activa') return res.status(422).json({ error: 'La tarjeta está bloqueada' });
-  if (!db.prepare('SELECT 1 FROM personas WHERE id = ? AND activo = 1').get(personaId)) {
+  if (!(await uno('SELECT 1 FROM personas WHERE id = ? AND activo = 1', [personaId]))) {
     return res.status(422).json({ error: 'Selecciona una persona válida' });
   }
-  if (monto > tarjeta.disponible) {
-    return res.status(422).json({ error: `El monto supera el disponible de la tarjeta ($${tarjeta.disponible.toFixed(2)})` });
-  }
+  if (monto > tarjeta.disponible) return res.status(422).json({ error: errorDisponible(tarjeta.disponible) });
 
   // Evita registrar dos veces la misma compra
-  const duplicado = db.prepare(`
+  const duplicado = await uno(`
     SELECT id FROM gastos
     WHERE tarjeta_id = ? AND comercio = ? COLLATE NOCASE AND fecha_compra = ? AND monto = ? AND estado != 'anulado'
-  `).get(tarjetaId, comercio, fechaCompra, monto);
+  `, [tarjetaId, comercio, fechaCompra, monto]);
   if (duplicado && !req.body.forzar) {
     return res.status(409).json({ error: 'Ya existe un gasto igual (mismo comercio, fecha y monto)', duplicado_id: duplicado.id });
   }
 
-  db.exec('BEGIN');
-  try {
-    const { lastInsertRowid } = db.prepare(`
-      INSERT INTO gastos (usuario_id, tarjeta_id, persona_id, comercio, fecha_compra, monto, estado, nota, creado_en)
-      VALUES (?, ?, ?, ?, ?, ?, 'confirmado', ?, datetime('now', 'localtime'))
-    `).run(req.usuario.id, tarjetaId, personaId, comercio, fechaCompra, monto, nota);
-    if (archivo) {
-      const textoOcr = typeof req.body.texto_ocr === 'string' ? req.body.texto_ocr.slice(0, 10000) : null;
-      db.prepare(`
-        INSERT INTO facturas (gasto_id, ruta_archivo, texto_ocr, fecha_subida) VALUES (?, ?, ?, datetime('now', 'localtime'))
-      `).run(lastInsertRowid, archivo, textoOcr);
-    }
-    db.exec('COMMIT');
-    res.status(201).json({ gasto: db.prepare(`${SELECT_GASTOS} WHERE g.id = ?`).get(lastInsertRowid), tarjeta: saldoTarjeta(tarjetaId) });
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
+  // Todo en una transacción. El INSERT vuelve a comprobar el disponible, por si otra persona
+  // registró un gasto al mismo tiempo; la factura pasa de "subidas" a "facturas".
+  // changes() = 1 en las sentencias siguientes asegura que solo se ejecuten si la anterior sí insertó.
+  const creado = ahoraLocal();
+  const sentencias = [[`
+    INSERT INTO gastos (usuario_id, tarjeta_id, persona_id, comercio, fecha_compra, monto, estado, nota, creado_en)
+    SELECT ?, ?, ?, ?, ?, ?, 'confirmado', ?, ?
+    WHERE (SELECT ${SQL_DISPONIBLE} FROM tarjetas t WHERE t.id = ?) >= ?
+  `, [req.usuario.id, tarjetaId, personaId, comercio, fechaCompra, monto, nota, creado, tarjetaId, monto]],
+  ['SELECT changes() AS insertado, last_insert_rowid() AS id']];
+  if (archivo) {
+    sentencias.push(
+      [`INSERT INTO facturas (gasto_id, ruta_archivo, imagen, tipo, texto_ocr, fecha_subida)
+        SELECT last_insert_rowid(), '', imagen, tipo, texto, ? FROM subidas WHERE id = ? AND changes() = 1`, [creado, archivo]],
+      ['DELETE FROM subidas WHERE id = ? AND changes() = 1', [archivo]],
+    );
   }
+  const resultados = await lote(sentencias);
+  const { insertado, id } = resultados[1].rows[0];
+  if (!insertado) {
+    const actual = await saldoTarjeta(tarjetaId);
+    return res.status(422).json({ error: errorDisponible(actual.disponible) });
+  }
+  res.status(201).json({ gasto: await buscarGasto(Number(id)), tarjeta: await saldoTarjeta(tarjetaId) });
 });
 
 // Transiciones permitidas: pendiente -> confirmado | anulado, confirmado -> anulado
-router.patch('/:id/estado', (req, res) => {
+router.patch('/:id/estado', async (req, res) => {
   const gastoId = v.id(req.params.id, 'id');
   const nuevo = v.opcion(req.body.estado, 'estado', ['confirmado', 'anulado']);
-  const gasto = db.prepare('SELECT * FROM gastos WHERE id = ?').get(gastoId);
+  const gasto = await uno('SELECT * FROM gastos WHERE id = ?', [gastoId]);
   if (!gasto || (!esAdmin(req) && gasto.usuario_id !== req.usuario.id)) {
     return res.status(404).json({ error: 'Gasto no encontrado' });
   }
@@ -133,14 +131,12 @@ router.patch('/:id/estado', (req, res) => {
     return res.status(409).json({ error: `El gasto ya está ${gasto.estado}` });
   }
   if (nuevo === 'confirmado') {
-    const tarjeta = saldoTarjeta(gasto.tarjeta_id);
-    if (gasto.monto > tarjeta.disponible) {
-      return res.status(422).json({ error: `El monto supera el disponible de la tarjeta ($${tarjeta.disponible.toFixed(2)})` });
-    }
+    const tarjeta = await saldoTarjeta(gasto.tarjeta_id);
+    if (gasto.monto > tarjeta.disponible) return res.status(422).json({ error: errorDisponible(tarjeta.disponible) });
   }
   // La condición sobre el estado anterior impide confirmar dos veces el mismo gasto
-  db.prepare('UPDATE gastos SET estado = ? WHERE id = ? AND estado = ?').run(nuevo, gastoId, gasto.estado);
-  res.json({ gasto: db.prepare(`${SELECT_GASTOS} WHERE g.id = ?`).get(gastoId), tarjeta: saldoTarjeta(gasto.tarjeta_id) });
+  await ejecutar('UPDATE gastos SET estado = ? WHERE id = ? AND estado = ?', [nuevo, gastoId, gasto.estado]);
+  res.json({ gasto: await buscarGasto(gastoId), tarjeta: await saldoTarjeta(gasto.tarjeta_id) });
 });
 
 export default router;

@@ -1,12 +1,21 @@
-// Desde Live Server (puertos 5500+) el API sigue en el servidor de Node, puerto 3000.
-// Se usa el mismo hostname de la página para que la cookie de sesión funcione.
-const API_PUERTO = '3000';
-const esLiveServer = /^55\d\d$/.test(location.port);
-const API_BASE = esLiveServer ? `${location.protocol}//${location.hostname}:${API_PUERTO}` : '';
+// Dónde está el API:
+// - En GitHub Pages: el servidor publicado en Render (misma base de datos compartida).
+// - En Live Server (puertos 5500+): el servidor local de Node en el puerto 3000.
+// - Si la página la sirve el propio servidor de Node: el mismo origen.
+const API_PRODUCCION = 'https://credidiper.onrender.com';
+const API_BASE = location.hostname.endsWith('github.io') ? API_PRODUCCION
+  : /^55\d\d$/.test(location.port) ? `${location.protocol}//${location.hostname}:3000`
+    : '';
 
-// En GitHub Pages no hay servidor: la app usa el modo demostración, que guarda todo en el navegador
-const MODO_DEMO = location.hostname.endsWith('github.io') || new URLSearchParams(location.search).has('demo');
-const demo = MODO_DEMO ? await import('./demo.js') : null;
+// Token de sesión: en localStorage si marcó "Recordarme", si no en sessionStorage (se borra al cerrar el navegador)
+const CLAVE_TOKEN = 'credisiman-token';
+const sesionGuardada = {
+  leer: () => { try { return localStorage.getItem(CLAVE_TOKEN) || sessionStorage.getItem(CLAVE_TOKEN); } catch { return null; } },
+  guardar: (token, recordar) => {
+    try { (recordar ? localStorage : sessionStorage).setItem(CLAVE_TOKEN, token); } catch { /* sin almacenamiento */ }
+  },
+  borrar: () => { try { localStorage.removeItem(CLAVE_TOKEN); sessionStorage.removeItem(CLAVE_TOKEN); } catch { /* nada */ } },
+};
 
 // Colores por persona: orden fijo validado (contraste y daltonismo); el color sigue a la persona, no a su posición
 const PALETA = ['#6250d6', '#eb6834', '#2a78d6', '#eda100', '#1baf7a', '#e87ba4', '#008300', '#e34948'];
@@ -62,41 +71,65 @@ const iniciales = (nombre) => nombre.split(/\s+/).filter(Boolean).slice(0, 2).ma
 // Contenido de data-tip: el navegador lo decodifica al leerlo y luego se inserta como HTML, por eso se escapa dos veces
 const tip = (titulo, texto) => esc(`<b>${esc(titulo)}</b>${texto}`);
 const datosForm = (form) => Object.fromEntries(new FormData(form));
-const urlFactura = (gastoId, descargar) => (demo
-  ? demo.urlFactura(gastoId)
-  : `${API_BASE}/api/facturas/${gastoId}/imagen${descargar ? '?descargar=1' : ''}`);
+// <img src> no puede mandar la cabecera Authorization, por eso el token va en la URL
+const urlFactura = (gastoId, descargar) =>
+  `${API_BASE}/api/facturas/${gastoId}/imagen?t=${encodeURIComponent(sesionGuardada.leer() || '')}${descargar ? '&descargar=1' : ''}`;
 
 async function api(url, opciones = {}) {
-  if (demo) {
-    try {
-      return await demo.api(url, opciones);
-    } catch (err) {
-      if (err.status === 401 && url !== '/api/auth/login') mostrarLogin();
-      throw err;
-    }
-  }
   const esForm = opciones.body instanceof FormData;
+  const token = sesionGuardada.leer();
+  const headers = {};
+  if (!esForm) headers['Content-Type'] = 'application/json';
+  if (token) headers.Authorization = `Bearer ${token}`;
+  // El plan gratis de Render duerme el servidor tras un rato sin uso; la primera petición tarda en despertarlo
+  const aviso = setTimeout(() => toast('Conectando con el servidor… la primera vez puede tardar hasta un minuto.', 60000), 4000);
   const res = await fetch(API_BASE + url, {
     ...opciones,
-    credentials: 'include',
-    headers: esForm ? undefined : { 'Content-Type': 'application/json' },
+    headers,
     body: esForm ? opciones.body : opciones.body ? JSON.stringify(opciones.body) : undefined,
   }).catch(() => {
-    throw new Error('No hay conexión con el servidor. Ejecuta "npm run dev" en la terminal.');
+    throw new Error(API_BASE === API_PRODUCCION
+      ? 'No se pudo conectar con el servidor. Revisa tu internet e inténtalo de nuevo.'
+      : 'No hay conexión con el servidor. Ejecuta "npm run dev" en la terminal.');
+  }).finally(() => {
+    clearTimeout(aviso);
+    if ($('#toast').textContent.startsWith('Conectando')) $('#toast').hidden = true;
   });
   const datos = await res.json().catch(() => ({ error: 'Respuesta inválida del servidor' }));
-  if (res.status === 401 && url !== '/api/auth/login') mostrarLogin();
+  if (res.status === 401 && url !== '/api/auth/login') {
+    sesionGuardada.borrar();
+    mostrarLogin();
+  }
   if (!res.ok) throw Object.assign(new Error(datos.error || 'Error inesperado'), { status: res.status, datos });
   return datos;
 }
 
 let toastTimer;
-function toast(mensaje) {
+function toast(mensaje, duracion = 3200) {
   const el = $('#toast');
   el.textContent = mensaje;
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+  toastTimer = setTimeout(() => { el.hidden = true; }, duracion);
+}
+
+// Reduce la foto (máx. 1600 px, JPEG) para que suba rápido y ocupe poco en la base de datos
+async function comprimirImagen(archivo) {
+  try {
+    const bitmap = await createImageBitmap(archivo);
+    const escala = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * escala);
+    canvas.height = Math.round(bitmap.height * escala);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    return blob && blob.size < archivo.size ? new File([blob], 'factura.jpg', { type: 'image/jpeg' }) : archivo;
+  } catch {
+    return archivo;
+  }
 }
 
 // Ejecuta una acción mostrando el error en un elemento (o en un aviso) y bloqueando el botón mientras tanto
@@ -155,6 +188,7 @@ function mostrarLogin() {
 }
 
 async function iniciarApp() {
+  if (!sesionGuardada.leer()) return mostrarLogin();
   try {
     estado.usuario = await api('/api/auth/me');
   } catch {
@@ -179,7 +213,9 @@ $('#form-login').addEventListener('submit', async (e) => {
     return;
   }
   await conError($('#login-error'), async () => {
-    await api('/api/auth/login', { method: 'POST', body: { ...datos, recordar: form.recordar.checked } });
+    const { token } = await api('/api/auth/login', { method: 'POST', body: { ...datos, recordar: form.recordar.checked } });
+    sesionGuardada.borrar();
+    sesionGuardada.guardar(token, form.recordar.checked);
     form.password.value = '';
     await iniciarApp();
   }, form.querySelector('[type=submit]'));
@@ -198,6 +234,7 @@ $('#link-olvido').addEventListener('click', (e) => {
 
 $('#btn-salir').addEventListener('click', async () => {
   await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  sesionGuardada.borrar();
   location.hash = '';
   mostrarLogin();
 });
@@ -339,7 +376,7 @@ async function procesarArchivo(archivo) {
   $('#zona-contenido').hidden = true;
   $('#zona-cargando').hidden = false;
   const fd = new FormData();
-  fd.append('imagen', archivo);
+  fd.append('imagen', await comprimirImagen(archivo));
   try {
     const r = await api('/api/facturas/ocr', { method: 'POST', body: fd });
     if (registro.vistaPrevia) URL.revokeObjectURL(registro.vistaPrevia);
@@ -773,22 +810,6 @@ document.addEventListener('click', (e) => {
 });
 visor.addEventListener('click', () => { visor.hidden = true; });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') visor.hidden = true; });
-
-// ---------- Modo demostración ----------
-if (demo) {
-  $('#aviso-demo').hidden = false;
-  $('#login-demo').hidden = false;
-  $('#login-demo b').textContent = `${demo.CREDENCIALES.correo} / ${demo.CREDENCIALES.password}`;
-  const form = $('#form-login');
-  form.correo.value = demo.CREDENCIALES.correo;
-  form.password.value = demo.CREDENCIALES.password;
-  $('#btn-reiniciar-demo').addEventListener('click', async () => {
-    if (!confirm('¿Borrar todos los datos de la demostración y volver a los datos de ejemplo?')) return;
-    await demo.reiniciar();
-    location.hash = '';
-    mostrarLogin();
-  });
-}
 
 pintarIconos();
 iniciarApp();

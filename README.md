@@ -2,43 +2,62 @@
 
 Aplicación web para registrar los gastos de una tarjeta Credisiman y calcular el saldo disponible.
 
-- **Frontend:** HTML, CSS y JavaScript (`public/`)
-- **Backend:** Node.js + Express (`src/`)
-- **Base de datos:** SQLite, con el módulo `node:sqlite` incluido en Node (`data/credidiper.db`)
-
+- **Frontend:** HTML, CSS y JavaScript (`public/`), publicado en GitHub Pages
+- **Backend:** Node.js + Express (`src/`), publicado en Render
+- **Base de datos:** SQLite en Turso (`@libsql/client`), compartida por todos
 - **OCR:** Tesseract.js lee el comercio, la fecha y el total de la foto de la factura (`src/ocr.js`)
 
-## Demostración en línea
+## Una sola base de datos para todos
 
-https://lailenn.github.io/credidiper/ — entra con `admin@credidiper.local` / `admin123`.
+```
+GitHub Pages (lailenn.github.io/credidiper) ─┐
+Tu computadora (localhost / Live Server) ─────┼──► Servidor Node (Render) ──► SQLite en Turso
+                                              │
+Tu computadora con npm run dev ───────────────┴──────────────────────────────► (la misma base)
+```
 
-GitHub Pages no puede ejecutar Node, así que ahí la app corre en **modo demostración** (`public/demo.js`): imita el API en el navegador, guarda los datos en `localStorage` (solo en ese navegador), lee las facturas con Tesseract.js en el navegador y arranca con datos de ejemplo. Se puede probar en local agregando `?demo` a la URL.
+Lo que se registra en un lugar se ve en todos. Las fotos de las facturas también se guardan en la base.
 
 ## Requisitos
 
-Node.js 24 o superior (trae `node:sqlite` incluido).
+Node.js 22.12 o superior.
 
-## Cómo ejecutarlo
+## Cómo ejecutarlo en tu computadora
+
+1. Copia `.env.example` como `.env` y pon la URL y el token de Turso (el archivo `.env` no se sube a GitHub).
+2. Ejecuta:
 
 ```bash
 npm install
 npm run dev      # se reinicia al guardar cambios  (o: npm start)
 ```
 
-Abre http://localhost:3000, o abre `public/index.html` con **Live Server**: la página llama al API en el puerto 3000, así que el servidor de Node tiene que estar corriendo.
+Abre http://localhost:3000, o abre `public/index.html` con **Live Server** (llama al servidor del puerto 3000).
+
+Sin `.env`, el servidor usa un archivo local `data/credidiper.db` (sirve para pruebas, pero esos datos no se comparten).
 
 La primera factura que se lee descarga el modelo de español de Tesseract (~2 MB, necesita internet) y lo guarda en `data/tesseract`.
 
-La primera vez se crea un administrador: `admin@credidiper.local` / `admin123`.
-Puedes cambiarlo antes del primer arranque con las variables `ADMIN_CORREO` y `ADMIN_PASSWORD`.
+Si la base está vacía se crea un administrador: `admin@credidiper.local` / `admin123`. Cambia la contraseña en **Configuración → Mi cuenta**.
 
-### Variables de entorno opcionales
+## Publicación
+
+- **Turso** (base de datos): crea una base y un token; van en `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN`.
+- **Render** (servidor): *New → Blueprint* con este repositorio usa `render.yaml`; pon ahí las dos variables de Turso.
+- **GitHub Pages** (pantallas): se publica sola desde la rama `main`. La URL del servidor está en `API_PRODUCCION` de `public/app.js`.
+- Para copiar una base local a Turso: `npm run migrar` (se detiene si Turso ya tiene datos).
+
+En el plan gratis, Render duerme el servidor tras 15 minutos sin uso; la primera carga después tarda cerca de un minuto.
+
+### Variables de entorno
 
 | Variable | Uso |
 |---|---|
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Base de datos compartida en Turso |
 | `PORT` | Puerto del servidor (por defecto 3000) |
-| `DB_PATH` | Ruta del archivo SQLite |
-| `SESSION_SECRET` | Secreto de las sesiones. Sin él, las sesiones se cierran al reiniciar el servidor |
+| `DB_PATH` | Archivo SQLite local cuando no hay Turso |
+| `CORS_ORIGINS` | Páginas que pueden usar el API (por defecto GitHub Pages y Live Server) |
+| `ZONA_HORARIA` | Zona horaria de las fechas de registro (por defecto `America/El_Salvador`) |
 | `ADMIN_CORREO`, `ADMIN_PASSWORD` | Credenciales del primer administrador |
 
 ## Roles
@@ -77,7 +96,7 @@ Disponible = Límite − Saldo inicial − Gastos confirmados
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| POST | `/api/auth/login` | Inicia sesión (`correo`, `password`, `recordar`) |
+| POST | `/api/auth/login` | Inicia sesión (`correo`, `password`, `recordar`); devuelve un `token` para la cabecera `Authorization: Bearer` |
 | POST | `/api/auth/logout` | Cierra sesión |
 | GET | `/api/auth/me` | Usuario actual |
 | PATCH | `/api/auth/password` | Cambia la contraseña propia (`actual`, `nueva`) |

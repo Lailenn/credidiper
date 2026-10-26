@@ -4,8 +4,9 @@
   "description": "Control de gastos de tarjeta Credisiman",
   "main": "src/server.js",
   "scripts": {
-    "start": "node --dns-result-order=ipv4first src/server.js",
-    "dev": "node --dns-result-order=ipv4first --watch src/server.js"
+    "start": "node --env-file-if-exists=.env --dns-result-order=ipv4first src/server.js",
+    "dev": "node --env-file-if-exists=.env --dns-result-order=ipv4first --watch src/server.js",
+    "migrar": "node --env-file-if-exists=.env --dns-result-order=ipv4first scripts/migrar.js"
   },
   "repository": {
     "type": "git",
@@ -20,10 +21,13 @@
   },
   "homepage": "https://github.com/Lailenn/credidiper#readme",
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "bcryptjs": "^3.0.3",
     "express": "^5.3.0",
-    "express-session": "^1.19.0",
     "multer": "^2.5.0",
     "tesseract.js": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=22.12"
   }
 }

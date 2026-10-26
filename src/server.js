@@ -1,9 +1,6 @@
 import express from 'express';
-import session from 'express-session';
-import crypto from 'node:crypto';
 import path from 'node:path';
-import { ajuste } from './db.js';
-import { SqliteStore } from './sesiones.js';
+import { iniciarBase, esRemota } from './db.js';
 import { requireAuth } from './auth.js';
 import authRoutes from './routes/auth.js';
 import usuariosRoutes from './routes/usuarios.js';
@@ -16,16 +13,17 @@ import reportesRoutes from './routes/reportes.js';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Permite usar el frontend desde Live Server (puerto 5500) llamando al API de este servidor
-const ORIGENES_PERMITIDOS = (process.env.CORS_ORIGINS || 'http://127.0.0.1:5500,http://localhost:5500').split(',');
+// Páginas que pueden usar este API: GitHub Pages y Live Server
+const ORIGENES_PERMITIDOS = (process.env.CORS_ORIGINS
+  || 'https://lailenn.github.io,http://127.0.0.1:5500,http://localhost:5500').split(',');
 app.use((req, res, next) => {
   const origen = req.headers.origin;
   if (origen && ORIGENES_PERMITIDOS.includes(origen)) {
     res.set({
       'Access-Control-Allow-Origin': origen,
-      'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400',
       Vary: 'Origin',
     });
     if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -34,15 +32,8 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
-app.use(session({
-  // El secreto se genera una vez y se guarda en la base, así las sesiones sobreviven a los reinicios
-  secret: process.env.SESSION_SECRET || ajuste('session_secret', () => crypto.randomBytes(32).toString('hex')),
-  store: new SqliteStore(),
-  resave: false,
-  saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax' },
-}));
 
+app.get('/api/salud', (req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/usuarios', requireAuth, usuariosRoutes);
 app.use('/api/personas', requireAuth, personasRoutes);
@@ -60,4 +51,5 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-app.listen(PORT, () => console.log(`Credidiper en http://localhost:${PORT}`));
+await iniciarBase();
+app.listen(PORT, () => console.log(`Credidiper en http://localhost:${PORT} · base ${esRemota ? 'compartida (Turso)' : 'local'}`));
