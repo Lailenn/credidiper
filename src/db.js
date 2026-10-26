@@ -5,9 +5,13 @@ import bcrypt from 'bcryptjs';
 
 // Con TURSO_DATABASE_URL se usa la base compartida en internet (la misma para local, Render y GitHub Pages).
 // Sin ella, un archivo SQLite local (útil para pruebas).
+// Se quitan espacios y saltos de línea: al pegar los valores en un panel (p. ej. Render) suele colarse uno al final
+const TURSO_URL = process.env.TURSO_DATABASE_URL?.trim();
+const TURSO_TOKEN = process.env.TURSO_AUTH_TOKEN?.trim();
+
 function crearCliente() {
-  if (process.env.TURSO_DATABASE_URL) {
-    return createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
+  if (TURSO_URL) {
+    return createClient({ url: TURSO_URL, authToken: TURSO_TOKEN });
   }
   const archivo = process.env.DB_PATH || path.resolve('data', 'credidiper.db');
   fs.mkdirSync(path.dirname(archivo), { recursive: true });
@@ -15,7 +19,7 @@ function crearCliente() {
 }
 
 export const cliente = crearCliente();
-export const esRemota = Boolean(process.env.TURSO_DATABASE_URL);
+export const esRemota = Boolean(TURSO_URL);
 
 const aObjeto = (resultado) => resultado.rows.map((fila) => Object.fromEntries(resultado.columns.map((c, i) => [c, fila[i]])));
 
