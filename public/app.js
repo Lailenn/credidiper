@@ -1,5 +1,5 @@
 import { extraerDatos } from './extraer.js';
-import { leerEnNavegador } from './ocr-navegador.js';
+import { leerEnNavegador, precargarLector } from './ocr-navegador.js';
 
 // Dónde está el API:
 // - En GitHub Pages: el servidor publicado en Render (misma base de datos compartida).
@@ -481,6 +481,7 @@ function reiniciarRegistro() {
 }
 
 async function abrirRegistro() {
+  precargarLector(); // el lector queda listo mientras se elige la foto
   reiniciarRegistro();
   await cargarBase();
   if (!estado.tarjeta || estado.tarjeta.estado !== 'activa') {
@@ -721,6 +722,7 @@ function soltarFoto() {
 }
 
 async function abrirEscaner() {
+  precargarLector();
   // Sin acceso a la cámara desde el navegador: se usa la cámara del teléfono a través del selector de archivos
   if (!navigator.mediaDevices?.getUserMedia) {
     $('#input-camara').click();

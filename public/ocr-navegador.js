@@ -167,6 +167,68 @@ function lineasConAlto(data) {
 
 const aBlob = (canvas) => new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
 
+// Empieza a descargar/preparar el lector antes de que haya foto (al abrir "Registrar gasto")
+export function precargarLector() {
+  obtenerWorker().catch(() => {});
+}
+
+// Adivina si el texto corre horizontal o vertical sin leerlo (instantáneo). Se revisa la foto por parches:
+// en cada parche con papel y algo de tinta, las líneas de texto dejan filas vacías entre renglones si el
+// texto es horizontal, o columnas vacías si es vertical. Se suman los votos con varios tamaños de parche
+// (la letra puede verse grande o pequeña). Devuelve 0 (horizontal) o 90 (vertical) y si el resultado es claro.
+function direccionDelTexto(bitmap) {
+  let horizontal = 0;
+  let vertical = 0;
+  for (const [lado, parches] of [[800, [24]], [1000, [24, 32, 48]]]) {
+    const escala = Math.min(1, lado / Math.max(bitmap.width, bitmap.height));
+    const w = Math.round(bitmap.width * escala);
+    const h = Math.round(bitmap.height * escala);
+    const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const d = ctx.getImageData(0, 0, w, h).data;
+    const gris = new Uint8Array(w * h);
+    for (let i = 0; i < gris.length; i++) gris[i] = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000;
+    for (const T of parches) {
+      const filas = new Uint16Array(T);
+      const columnas = new Uint16Array(T);
+      for (let ty = 0; ty + T <= h; ty += T) {
+        for (let tx = 0; tx + T <= w; tx += T) {
+          let max = 0;
+          let min = 255;
+          for (let y = ty; y < ty + T; y++) {
+            for (let x = tx; x < tx + T; x++) { const v = gris[y * w + x]; if (v > max) max = v; if (v < min) min = v; }
+          }
+          if (max < 120 || max - min < 60) continue; // sin papel claro o sin tinta
+          const umbral = (max + min) / 2;
+          filas.fill(0);
+          columnas.fill(0);
+          let tinta = 0;
+          for (let y = 0; y < T; y++) {
+            for (let x = 0; x < T; x++) {
+              if (gris[(ty + y) * w + tx + x] < umbral) { filas[y]++; columnas[x]++; tinta++; }
+            }
+          }
+          if (tinta < T * T * 0.04 || tinta > T * T * 0.35) continue; // casi vacío o mancha (no es texto)
+          let filasVacias = 0;
+          let columnasVacias = 0;
+          for (let i = 0; i < T; i++) { if (!filas[i]) filasVacias++; if (!columnas[i]) columnasVacias++; }
+          if (filasVacias > columnasVacias * 1.5 + 1) horizontal++;
+          else if (columnasVacias > filasVacias * 1.5 + 1) vertical++;
+        }
+      }
+    }
+  }
+  const mayor = Math.max(horizontal, vertical);
+  const menor = Math.min(horizontal, vertical);
+  return { grados: vertical > horizontal ? 90 : 0, seguro: mayor >= 30 && mayor >= menor * 2 };
+}
+
+const leerCompleto = (worker, bitmap, grados, recorte) =>
+  worker.recognize(mejorarParaLeer(dibujar(bitmap, grados, LADO_LECTURA, recorte)), {}, { text: true, blocks: true });
+// Lectura buena: el OCR confía y encontró montos (una factura siempre tiene)
+const esBuena = (data) => data.confidence >= 60 && (data.text.match(/\d[.,]\d{2}(?!\d)/g) || []).length >= 2;
+
 // Devuelve el texto leído, las líneas con su tamaño y la foto ya derecha (para guardarla)
 export async function leerEnNavegador(archivo, progreso) {
   const bitmap = await createImageBitmap(archivo);
@@ -182,30 +244,39 @@ export async function leerEnNavegador(archivo, progreso) {
   // 0) Si la factura ocupa solo una parte de la foto (mesa, teclado alrededor), se recorta el papel
   const papel = buscarPapel(bitmap);
 
-  // 1) Orientación: se lee rápido en tamaño pequeño tal como viene; si no parece una factura legible,
-  //    se prueba girada 90° a cada lado y de cabeza, y se queda con la que mejor se lee
-  let grados = 0;
-  fase('Revisando la orientación…', 0, 25);
-  const derecha = await worker.recognize(mejorarParaLeer(dibujar(bitmap, 0, LADO_PRUEBA, papel)));
-  let mejor = puntuar(derecha.data);
-  if (derecha.data.confidence < 70 || mejor < 85) {
-    const opciones = [90, 270, 180];
-    for (const [i, g] of opciones.entries()) {
-      fase('Girando la foto para leerla mejor…', 25 + i * 15, 40 + i * 15);
+  // 1) Dirección del texto (horizontal o vertical) analizando la imagen: instantáneo, sin leer
+  const direccion = direccionDelTexto(bitmap);
+  let grados = direccion.grados;
+
+  // 2) Lectura completa en esa dirección. Casi siempre basta con esta sola lectura.
+  fase('Leyendo la factura…', 0, 100);
+  let { data } = await leerCompleto(worker, bitmap, grados, papel);
+
+  // 3) Si no salió bien, la foto puede estar de cabeza (o la dirección no era clara): se prueban
+  //    los otros giros en tamaño pequeño (rápido) y se vuelve a leer solo si alguno es mejor
+  if (!esBuena(data) && direccion.seguro) {
+    // La dirección es clara, así que solo puede estar de cabeza: se lee directo girada 180°
+    fase('Girando la foto para leerla mejor…', 0, 100);
+    const girada = await leerCompleto(worker, bitmap, (grados + 180) % 360, papel);
+    if (puntuar(girada.data) > puntuar(data)) { data = girada.data; grados = (grados + 180) % 360; }
+  } else if (!esBuena(data)) {
+    const candidatos = [grados + 180, grados + 90, grados + 270];
+    let mejor = { puntos: puntuar(data), grados };
+    for (const [i, g] of candidatos.map((x) => x % 360).entries()) {
+      fase('Girando la foto para leerla mejor…', (i * 100) / (candidatos.length + 1), ((i + 1) * 100) / (candidatos.length + 1));
       const prueba = await worker.recognize(mejorarParaLeer(dibujar(bitmap, g, LADO_PRUEBA, papel)));
-      const puntos = puntuar(prueba.data);
-      if (puntos > mejor + 5) { mejor = puntos; grados = g; }
+      const puntos = puntuar(prueba.data) + 8; // compensa que en tamaño pequeño se lee algo peor
+      if (puntos > mejor.puntos) mejor = { puntos, grados: g };
+    }
+    if (mejor.grados !== grados) {
+      grados = mejor.grados;
+      fase('Leyendo la factura…', 70, 100);
+      ({ data } = await leerCompleto(worker, bitmap, grados, papel));
     }
   }
-
-  // 2) Lectura completa en buena resolución y con la orientación elegida
-  fase('Leyendo la factura…', 70, 100);
-  let { data } = await worker.recognize(
-    mejorarParaLeer(dibujar(bitmap, grados, LADO_LECTURA, papel)), {}, { text: true, blocks: true },
-  );
   // Si con el recorte casi no se leyó nada, se intenta con la foto completa
   if (papel && data.text.trim().length < 20) {
-    ({ data } = await worker.recognize(mejorarParaLeer(dibujar(bitmap, grados, LADO_LECTURA)), {}, { text: true, blocks: true }));
+    ({ data } = await leerCompleto(worker, bitmap, grados));
   }
   alProgresar = null;
 
