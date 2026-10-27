@@ -228,12 +228,17 @@
           <!-- Éxito -->
           <div class="paso exito" data-paso="4" hidden>
             <div class="confeti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-            <span class="exito-icono"><i data-icon="check"></i></span>
+            <span class="exito-icono">
+              <span class="exito-onda" aria-hidden="true"></span>
+              <svg class="exito-check" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+              <span class="exito-explosion" aria-hidden="true"></span>
+            </span>
             <h2>¡Gasto registrado!</h2>
             <p>El monto de <b id="exito-monto"></b> se ha descontado<br>del límite de la tarjeta.</p>
             <div class="panel exito-saldo">
               <p>Nuevo saldo</p>
               <p class="cifra-hero verde" id="exito-saldo"></p>
+              <span class="exito-descuento" aria-hidden="true"></span>
             </div>
             <button type="button" class="btn btn-primario btn-bloque" id="btn-otro-gasto">Registrar otro gasto</button>
             <a href="#gastos" class="btn btn-suave btn-bloque">Ver mis gastos</a>

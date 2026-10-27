@@ -461,6 +461,58 @@ label { display: flex; flex-direction: column; gap: 6px; font-size: .88rem; colo
 .confeti i:nth-child(5) { background: #eda100; top: 0; right: 110px; width: 6px; height: 6px; }
 .confeti i:nth-child(6) { background: #2a78d6; top: 130px; left: 50px; width: 6px; height: 6px; }
 
+/* Animación al guardar el gasto */
+.exito-icono { position: relative; }
+.exito-check { width: 44px; height: 44px; fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 22; }
+.exito-onda { position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--verde); opacity: 0; pointer-events: none; }
+.exito-explosion { position: absolute; left: 50%; top: 50%; pointer-events: none; }
+.exito-explosion i {
+  position: absolute; width: 8px; height: 8px; margin: -4px; border-radius: 50%; opacity: 0;
+  animation: exito-confeti 1.3s cubic-bezier(.15, .7, .35, 1) var(--retraso) forwards;
+}
+.exito-explosion i.tira { width: 5px; height: 11px; border-radius: 2px; }
+.exito-saldo { position: relative; overflow: hidden; }
+.exito-descuento {
+  position: absolute; right: 16px; top: 14px; padding: 3px 10px; border-radius: 99px;
+  background: var(--rojo-50); color: var(--rojo); font-weight: 700; font-size: .85rem; opacity: 0;
+}
+
+.exito.animar .exito-icono { animation: exito-pop .55s cubic-bezier(.3, 1.6, .5, 1) both; }
+.exito.animar .exito-check { animation: exito-trazo .45s ease-out .35s both; }
+.exito.animar .exito-onda { animation: exito-onda 1s ease-out .3s; }
+.exito.animar .confeti i { animation: exito-flotar 2.6s ease-in-out infinite alternate, exito-aparecer .4s ease-out both; }
+.exito.animar .confeti i:nth-child(2n) { animation-delay: -1.3s, .15s; }
+.exito.animar .confeti i:nth-child(3n) { animation-duration: 3.2s, .4s; }
+.exito.animar h2 { animation: exito-subir .5s ease-out .45s both; }
+.exito.animar h2 + p { animation: exito-subir .5s ease-out .55s both; }
+.exito.animar .exito-saldo { animation: exito-subir .5s ease-out .65s both; }
+.exito.animar .exito-saldo .cifra-hero { animation: exito-latido .4s ease-out 1.75s; }
+.exito.animar .exito-descuento { animation: exito-descuento 1.6s ease-out .9s both; }
+.exito.animar #btn-otro-gasto { animation: exito-subir .45s ease-out .8s both; }
+.exito.animar > .btn:last-child { animation: exito-subir .45s ease-out .9s both; }
+
+@keyframes exito-pop { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+@keyframes exito-trazo { from { stroke-dashoffset: 22; } to { stroke-dashoffset: 0; } }
+@keyframes exito-onda { 0% { opacity: .7; transform: scale(1); } 100% { opacity: 0; transform: scale(1.9); } }
+@keyframes exito-confeti {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(.4); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), calc(var(--dy) + 60px)) rotate(var(--giro)) scale(1); }
+}
+@keyframes exito-flotar { from { transform: translateY(0); } to { transform: translateY(-8px); } }
+@keyframes exito-aparecer { from { opacity: 0; scale: 0; } to { opacity: 1; scale: 1; } }
+@keyframes exito-subir { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes exito-latido { 50% { transform: scale(1.06); } }
+@keyframes exito-descuento {
+  0% { opacity: 0; transform: translateY(10px); }
+  20%, 70% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-14px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .exito.animar *, .exito.animar .exito-icono { animation: none !important; }
+  .exito-check { stroke-dasharray: none; }
+}
+
 /* ---------- Tablas ---------- */
 .tabla-panel { padding: 6px 0; overflow-x: auto; }
 .tabla { width: 100%; border-collapse: collapse; font-size: .9rem; }

@@ -692,10 +692,49 @@ $('#form-confirmar').addEventListener('submit', async (e) => {
     }
     comerciosConocidos = null; // el comercio recién guardado ya cuenta para la próxima lectura
     $('#exito-monto').textContent = dinero(r.gasto.monto);
-    $('#exito-saldo').textContent = dinero(r.tarjeta.disponible);
     irPaso(4);
+    celebrarGasto(r.gasto.monto, r.tarjeta.disponible);
   }, form.querySelector('[type=submit]'));
 });
+
+// Animación al guardar: el check aparece, salta confeti y el saldo baja contando hasta el nuevo valor
+const sinMovimiento = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+function celebrarGasto(monto, disponible) {
+  const exito = $('.exito');
+  const saldo = $('#exito-saldo');
+  exito.classList.remove('animar');
+  void exito.offsetWidth; // reinicia las animaciones CSS si se registra otro gasto seguido
+  exito.classList.add('animar');
+  navigator.vibrate?.(35);
+  $('.exito-descuento').textContent = `−${dinero(monto)}`;
+  if (sinMovimiento()) { saldo.textContent = dinero(disponible); return; }
+
+  // Confeti: piezas que salen disparadas desde el check en todas direcciones y caen
+  const capa = $('.exito-explosion');
+  capa.innerHTML = Array.from({ length: 28 }, (_, i) => {
+    const angulo = (i / 28) * Math.PI * 2 + Math.random() * 0.4;
+    const distancia = 70 + Math.random() * 90;
+    const estilo = [
+      `--dx:${Math.cos(angulo) * distancia}px`, `--dy:${Math.sin(angulo) * distancia * 0.8}px`,
+      `--giro:${Math.round(Math.random() * 540 - 270)}deg`, `--retraso:${Math.round(Math.random() * 120)}ms`,
+      `background:${PALETA[i % PALETA.length]}`,
+    ].join(';');
+    return `<i class="${i % 3 ? 'tira' : ''}" style="${estilo}"></i>`;
+  }).join('');
+
+  // El saldo arranca en el valor anterior (antes de este gasto) y baja hasta el nuevo
+  const inicio = disponible + Number(monto);
+  const duracion = 1100;
+  let t0 = null;
+  const paso = (t) => {
+    t0 ??= t;
+    const avance = Math.min(1, (t - t0 - 650) / duracion); // espera a que aparezca la tarjeta del saldo
+    const suave = avance <= 0 ? 0 : 1 - (1 - avance) ** 3;
+    saldo.textContent = dinero(inicio - (inicio - disponible) * suave);
+    if (avance < 1) requestAnimationFrame(paso);
+  };
+  requestAnimationFrame(paso);
+}
 
 $('#btn-otro-gasto').addEventListener('click', abrirRegistro);
 
