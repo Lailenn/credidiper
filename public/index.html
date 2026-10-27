@@ -131,99 +131,59 @@
           <a href="#inicio" class="btn-icono" aria-label="Cerrar"><i data-icon="x"></i></a>
         </header>
         <div class="panel registro">
-          <ol class="pasos" id="pasos">
-            <li data-paso="1"><span class="paso-num">1</span><span>Subir factura</span></li>
-            <li data-paso="2"><span class="paso-num">2</span><span>Revisar datos</span></li>
-            <li data-paso="3"><span class="paso-num">3</span><span>Confirmar</span></li>
-          </ol>
-
-          <!-- Paso 1 -->
-          <div class="paso" data-paso="1">
-            <div class="opciones-captura">
-              <button type="button" class="opcion-captura principal" id="btn-tomar-foto">
-                <span class="opcion-icono"><i data-icon="scan"></i></span>
-                <span><strong>Escanear con la cámara</strong><small>Toma la foto y se lee sola</small></span>
-              </button>
+          <!-- Formulario del gasto con su factura adjunta (foto tomada o imagen subida) -->
+          <form class="paso registro-form" data-paso="1" id="form-gasto" novalidate>
+            <div class="col-datos">
+              <label>Comercio <input name="comercio" required maxlength="200" placeholder="Ej. Super Selectos" autocomplete="off"></label>
+              <div class="fila-dos">
+                <label>Fecha <input name="fecha_compra" type="date" required></label>
+                <label>Monto
+                  <span class="campo-prefijo"><span>$</span><input name="monto" type="number" step="0.01" min="0.01" required inputmode="decimal" placeholder="0.00"></span>
+                </label>
+              </div>
+              <div class="campo-personas">
+                <span class="etiqueta">¿De quién es el gasto?</span>
+                <input type="hidden" name="persona_id" id="conf-persona">
+                <div class="elegir-persona" id="elegir-persona" role="radiogroup" aria-label="Persona del gasto"></div>
+              </div>
+              <label>Nota (opcional) <textarea name="nota" rows="2" maxlength="500" placeholder="Agregar una nota…"></textarea></label>
             </div>
-            <input type="file" id="input-camara" accept="image/*" capture="environment" hidden>
-            <label class="zona-subida" id="zona-subida">
-              <input type="file" id="input-factura" accept="image/jpeg,image/png,image/webp" hidden>
-              <div class="zona-contenido" id="zona-contenido">
-                <span class="zona-icono"><i data-icon="receipt"></i><span class="zona-camara"><i data-icon="camera"></i></span></span>
-                <strong>O sube una foto de la factura</strong>
-                <p>El sistema leerá automáticamente<br>la información (fecha, comercio y monto)</p>
-                <span class="btn btn-borde">Seleccionar imagen</span>
-                <small>o arrastra la imagen aquí</small>
-              </div>
-              <div class="zona-cargando" id="zona-cargando" hidden>
-                <span class="spinner"></span>
-                <strong>Leyendo la factura…</strong>
-                <p>La primera vez puede tardar un poco mientras se prepara el lector.</p>
-              </div>
-            </label>
-            <p class="mensaje-error" id="subida-error" role="alert"></p>
-            <div class="aviso">
-              <i data-icon="info"></i>
-              <div><b>Formatos aceptados: JPG, PNG, WEBP</b> (máx. 8 MB)<br>Asegúrate de que la imagen esté clara y completa.</div>
-            </div>
-            <p class="centrado"><button type="button" class="btn-link" id="btn-sin-factura">Registrar sin factura</button></p>
-          </div>
 
-          <!-- Paso 2 -->
-          <div class="paso dos-columnas" data-paso="2" hidden>
-            <div class="col-imagen">
-              <div class="ticket" id="ticket">
-                <h3 id="ticket-comercio"></h3>
-                <p class="ticket-fecha" id="ticket-fecha"></p>
-                <ul class="ticket-items" id="ticket-items"></ul>
-                <dl class="ticket-totales" id="ticket-totales"></dl>
-              </div>
-              <div class="ticket-foto" id="paso2-imagen"></div>
-              <button type="button" class="btn btn-borde btn-bloque" id="btn-cambiar-imagen"><i data-icon="image"></i> Cambiar imagen</button>
-            </div>
-            <form id="form-datos" class="col-datos" novalidate>
-              <h2>Revisa los datos</h2>
-              <label>Comercio <input name="comercio" required maxlength="200"></label>
-              <label>Fecha <input name="fecha_compra" type="date" required></label>
-              <label>Monto total
-                <span class="campo-prefijo"><span>$</span><input name="monto" type="number" step="0.01" min="0.01" required inputmode="decimal"></span>
-              </label>
-              <div class="aviso aviso-ok" id="aviso-ocr" hidden></div>
-              <p class="mensaje-error" id="datos-error" role="alert"></p>
-              <div class="botones">
-                <a href="#inicio" class="btn btn-borde">Cancelar</a>
-                <button type="submit" class="btn btn-primario">Continuar</button>
-              </div>
-            </form>
-          </div>
-
-          <!-- Paso 3 -->
-          <div class="paso dos-columnas invertido" data-paso="3" hidden>
-            <form id="form-confirmar" class="col-datos" novalidate>
-              <div class="caja-resumen">
-                <h2>Resumen del gasto</h2>
-                <dl class="lista-datos">
-                  <dt>Comercio</dt><dd id="conf-comercio"></dd>
-                  <dt>Fecha</dt><dd id="conf-fecha"></dd>
-                  <dt>Monto</dt><dd id="conf-monto"></dd>
-                </dl>
-                <div class="campo-personas">
-                  <span class="etiqueta">¿De quién es el gasto?</span>
-                  <input type="hidden" name="persona_id" id="conf-persona">
-                  <div class="elegir-persona" id="elegir-persona" role="radiogroup" aria-label="Persona del gasto"></div>
+            <div class="col-factura">
+              <span class="etiqueta">Factura <span class="opcional">(opcional)</span></span>
+              <div class="adjunto" id="adjunto">
+                <div class="adjunto-vacio" id="adjunto-vacio">
+                  <span class="zona-icono"><i data-icon="receipt"></i></span>
+                  <strong>Adjunta la foto de la factura</strong>
+                  <p>Queda guardada junto al gasto para verla cuando quieras.</p>
+                  <div class="adjunto-botones">
+                    <label class="btn btn-primario"><i data-icon="camera"></i> Tomar foto
+                      <input type="file" id="input-camara" accept="image/*" capture="environment" hidden>
+                    </label>
+                    <label class="btn btn-borde"><i data-icon="image"></i> Subir imagen
+                      <input type="file" id="input-factura" accept="image/jpeg,image/png,image/webp" hidden>
+                    </label>
+                  </div>
+                  <small class="adjunto-arrastrar">o arrastra la imagen aquí · JPG, PNG o WEBP</small>
                 </div>
-                <label>Nota (opcional) <textarea name="nota" rows="3" maxlength="500" placeholder="Agregar una nota…"></textarea></label>
+                <div class="adjunto-lleno" id="adjunto-lleno" hidden>
+                  <div class="marco-factura" id="adjunto-imagen"></div>
+                  <div class="adjunto-acciones">
+                    <button type="button" class="btn btn-borde" id="btn-cambiar-foto"><i data-icon="repetir"></i> Cambiar</button>
+                    <button type="button" class="btn btn-borde btn-quitar" id="btn-quitar-foto"><i data-icon="x"></i> Quitar</button>
+                  </div>
+                </div>
               </div>
+            </div>
+
+            <div class="registro-pie">
               <p class="mensaje-error" id="confirmar-error" role="alert"></p>
               <div class="botones">
-                <button type="button" class="btn btn-borde" id="btn-anterior">Anterior</button>
-                <button type="submit" class="btn btn-primario">Guardar gasto</button>
+                <a href="#inicio" class="btn btn-borde">Cancelar</a>
+                <button type="submit" class="btn btn-primario"><i data-icon="check"></i> <span>Guardar gasto</span></button>
               </div>
-            </form>
-            <div class="col-imagen">
-              <div class="marco-factura" id="paso3-imagen"></div>
             </div>
-          </div>
+          </form>
 
           <!-- Éxito -->
           <div class="paso exito" data-paso="4" hidden>
@@ -277,7 +237,6 @@
           <div class="col-datos">
             <h2>Información de la factura</h2>
             <dl class="lista-datos" id="detalle-datos"></dl>
-            <div id="detalle-items"></div>
             <div class="botones" id="detalle-acciones"></div>
           </div>
         </div>
@@ -440,39 +399,6 @@
 
       </section>
     </main>
-  </div>
-
-  <!-- Escáner de facturas con la cámara -->
-  <div class="escaner" id="escaner" hidden>
-    <video id="escaner-video" playsinline muted autoplay></video>
-    <img id="escaner-foto" alt="" hidden>
-    <div class="esc-arriba">
-      <button type="button" class="esc-boton" id="esc-cerrar" aria-label="Cerrar escáner"><i data-icon="back"></i></button>
-      <button type="button" class="esc-auto" id="esc-auto" aria-pressed="false" title="Tomar la foto sola cuando la factura esté quieta">Auto</button>
-    </div>
-    <span class="esc-pastilla" id="esc-estado">Apunta a la factura</span>
-    <div class="esc-marco" id="esc-marco">
-      <i class="esq a"></i><i class="esq b"></i><i class="esq c"></i><i class="esq d"></i>
-      <div class="esc-linea"></div>
-    </div>
-    <div class="esc-resultado" id="esc-resultado" hidden>
-      <div class="esc-resultado-datos">
-        <strong id="esc-res-comercio"></strong>
-        <small id="esc-res-detalle"></small>
-        <div class="esc-res-fila"><span class="esc-res-total" id="esc-res-total"></span><small id="esc-res-fecha"></small></div>
-      </div>
-      <button type="button" class="esc-continuar" id="esc-continuar">
-        <small id="esc-res-impuesto"></small>
-        <span>Continuar</span>
-        <span class="esc-flecha"><i data-icon="arrow"></i></span>
-      </button>
-    </div>
-    <div class="esc-abajo">
-      <button type="button" class="esc-boton grande" id="esc-galeria" aria-label="Elegir de la galería"><i data-icon="image"></i></button>
-      <button type="button" class="esc-disparo" id="esc-disparo" aria-label="Tomar foto"><span></span></button>
-      <button type="button" class="esc-boton grande" id="esc-linterna" aria-label="Linterna"><i data-icon="flash"></i></button>
-    </div>
-    <input type="file" id="esc-input-galeria" accept="image/jpeg,image/png,image/webp" hidden>
   </div>
 
   <!-- Visor de imagen y tooltip -->

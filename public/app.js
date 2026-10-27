@@ -1,5 +1,3 @@
-import { extraerDatos } from './extraer.js';
-import { leerEnNavegador, precargarLector } from './ocr-navegador.js';
 
 // Dónde está el API:
 // - En GitHub Pages: el servidor publicado en Render (misma base de datos compartida).
@@ -370,7 +368,6 @@ function navegar() {
   if (!estado.usuario) return;
   const [nombre, param] = location.hash.slice(1).split('/');
   const vista = vistas[nombre] ? nombre : 'inicio';
-  if (!$('#escaner').hidden) cerrarEscaner();
   ajustarMenuMinimo();
   const seccion = vista === 'gasto' ? 'detalle' : vista;
   $$('.principal > section').forEach((s) => { s.hidden = s.dataset.vista !== seccion; });
@@ -446,19 +443,11 @@ function pintarDeudas(contenedor, totalEl) {
     : '<div class="panel vacio-grande">Aún no hay personas. Agrégalas en <a href="#personas">Personas</a> para llevar la cuenta de lo que te deben.</div>';
 }
 
-// ---------- Registrar gasto (asistente de 3 pasos) ----------
-const registro = { paso: 1, archivo: null, vistaPrevia: null, texto: '', ocrOk: false, leido: null, datos: {} };
+// ---------- Registrar gasto: datos + foto de la factura adjunta ----------
+const registro = { foto: null, vistaPrevia: null };
 
 function irPaso(n) {
-  registro.paso = n;
   $$('.registro .paso').forEach((p) => { p.hidden = Number(p.dataset.paso) !== n; });
-  $('#pasos').hidden = n === 4;
-  $$('#pasos li').forEach((li) => {
-    const num = Number(li.dataset.paso);
-    li.classList.toggle('activo', num === n);
-    li.classList.toggle('hecho', num < n);
-    $('.paso-num', li).innerHTML = num < n ? ic('check') : num;
-  });
 }
 
 function marcoImagen(src, conZoom) {
@@ -467,148 +456,67 @@ function marcoImagen(src, conZoom) {
     (conZoom ? `<button type="button" class="btn-icono btn-zoom" data-zoom="${esc(src)}" aria-label="Ampliar">${ic('zoom')}</button>` : '');
 }
 
-function reiniciarRegistro() {
+function quitarFoto() {
   if (registro.vistaPrevia) URL.revokeObjectURL(registro.vistaPrevia);
-  Object.assign(registro, { paso: 1, archivo: null, vistaPrevia: null, texto: '', ocrOk: false, leido: null, datos: {} });
-  $('#form-datos').reset();
-  $('#form-confirmar').reset();
-  $('#conf-persona').value = '';
+  Object.assign(registro, { foto: null, vistaPrevia: null });
   $('#input-factura').value = '';
-  $('#zona-contenido').hidden = false;
-  $('#zona-cargando').hidden = true;
-  ['#subida-error', '#datos-error', '#confirmar-error'].forEach((s) => { $(s).textContent = ''; });
+  $('#input-camara').value = '';
+  $('#adjunto-vacio').hidden = false;
+  $('#adjunto-lleno').hidden = true;
+  $('#adjunto-imagen').innerHTML = '';
+}
+
+function reiniciarRegistro() {
+  quitarFoto();
+  const form = $('#form-gasto');
+  form.reset();
+  form.fecha_compra.value = hoy();
+  $('#conf-persona').value = '';
+  $('#confirmar-error').textContent = '';
   irPaso(1);
 }
 
 async function abrirRegistro() {
-  precargarLector(); // el lector queda listo mientras se elige la foto
   reiniciarRegistro();
   await cargarBase();
+  pintarPersonasElegibles();
   if (!estado.tarjeta || estado.tarjeta.estado !== 'activa') {
-    $('#subida-error').textContent = estado.tarjeta ? 'La tarjeta está bloqueada.' : 'Primero hay que configurar la tarjeta en Configuración.';
+    $('#confirmar-error').textContent = estado.tarjeta ? 'La tarjeta está bloqueada.' : 'Primero hay que configurar la tarjeta en Configuración.';
   }
 }
 
 function errorImagen(archivo) {
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(archivo.type)) return 'Formato no admitido. Usa JPG, PNG o WEBP.';
-  if (archivo.size > 8 * 1024 * 1024) return 'La imagen pesa más de 8 MB.';
+  if (!archivo.type.startsWith('image/')) return 'Ese archivo no es una imagen.';
+  if (archivo.size > 20 * 1024 * 1024) return 'La imagen pesa demasiado.';
   return '';
 }
 
-// Comercios ya registrados (para corregir el nombre leído); se piden una vez por sesión
-let comerciosConocidos = null;
-const obtenerComercios = async () => {
-  comerciosConocidos ??= await api('/api/facturas/comercios').catch(() => []);
-  return comerciosConocidos;
-};
-
-// Lee la factura (en el teléfono; si no se puede, en el servidor), guarda la foto y llena el formulario del paso 2.
-// progreso(texto, porcentaje) informa el avance de la lectura.
-async function leerImagenFactura(archivo, progreso) {
-  let r;
-  let foto = archivo;
-  try {
-    const [leida, conocidos] = await Promise.all([leerEnNavegador(archivo, progreso), obtenerComercios()]);
-    foto = new File([leida.foto], 'factura.jpg', { type: 'image/jpeg' });
-    progreso?.('Guardando la foto…', 100);
-    const fd = new FormData();
-    fd.append('imagen', foto);
-    fd.append('texto', leida.texto);
-    const { archivo: guardado } = await api('/api/facturas/ocr', { method: 'POST', body: fd });
-    const datos = extraerDatos(leida.texto, { lineas: leida.lineas, conocidos });
-    r = { archivo: guardado, texto: leida.texto, ok: Boolean(leida.texto), ...datos };
-  } catch (err) {
-    if (err.status) throw err; // error del servidor al guardar: no tiene sentido reintentar
-    console.warn('Lectura en el navegador no disponible, se usa el servidor:', err);
-    progreso?.('Leyendo la factura en el servidor…', null);
-    const fd = new FormData();
-    fd.append('imagen', await comprimirImagen(archivo));
-    r = await api('/api/facturas/ocr', { method: 'POST', body: fd });
-  }
-  if (registro.vistaPrevia) URL.revokeObjectURL(registro.vistaPrevia);
-  Object.assign(registro, { archivo: r.archivo, vistaPrevia: URL.createObjectURL(foto), texto: r.texto, ocrOk: r.ok, leido: r });
-  const form = $('#form-datos');
-  form.comercio.value = r.comercio || '';
-  form.fecha_compra.value = r.fecha || '';
-  form.monto.value = r.monto ?? '';
-  return r;
-}
-
-async function procesarArchivo(archivo) {
-  $('#subida-error').textContent = '';
+// La foto se reduce (máx. 1600 px, JPEG) para que suba rápido; se guarda junto con el gasto al presionar Guardar
+async function adjuntarFoto(archivo) {
   if (!archivo) return;
   const error = errorImagen(archivo);
-  if (error) {
-    $('#subida-error').textContent = error;
-    return;
-  }
-  $('#zona-contenido').hidden = true;
-  $('#zona-cargando').hidden = false;
-  try {
-    await leerImagenFactura(archivo, (texto, porcentaje) => {
-      $('#zona-cargando strong').textContent = porcentaje != null ? `${texto} ${porcentaje}%` : texto;
-    });
-    mostrarPaso2();
-  } catch (err) {
-    $('#subida-error').textContent = err.message;
-  } finally {
-    $('#zona-contenido').hidden = false;
-    $('#zona-cargando').hidden = true;
-    $('#input-factura').value = '';
-  }
+  $('#confirmar-error').textContent = error;
+  if (error) return;
+  const foto = await comprimirImagen(archivo);
+  if (registro.vistaPrevia) URL.revokeObjectURL(registro.vistaPrevia);
+  Object.assign(registro, { foto, vistaPrevia: URL.createObjectURL(foto) });
+  $('#adjunto-imagen').innerHTML = marcoImagen(registro.vistaPrevia, true);
+  $('#adjunto-vacio').hidden = true;
+  $('#adjunto-lleno').hidden = false;
 }
 
-// Ticket con lo reconocido: productos, subtotal, impuesto y el total (que sigue lo que se escriba en el formulario)
-function pintarTicket() {
-  const form = $('#form-datos');
-  const leido = registro.leido || {};
-  const items = leido.items || [];
-  $('#ticket-comercio').textContent = form.comercio.value.trim() || 'Comercio';
-  $('#ticket-fecha').textContent = form.fecha_compra.value ? fechaCorta(form.fecha_compra.value) : 'Sin fecha';
-  $('#ticket-items').innerHTML = items.length
-    ? items.map((it) => `<li><span class="cant">${it.cantidad}x</span><span>${esc(it.descripcion)}</span><span class="precio">${dinero(it.precio)}</span></li>`).join('')
-    : `<li class="vacio-items">${registro.archivo ? 'No se detectaron productos en la foto' : 'Gasto sin factura'}</li>`;
-  $('#ticket-totales').innerHTML =
-    (leido.subtotal ? `<dt>Subtotal</dt><dd>${dinero(leido.subtotal)}</dd>` : '') +
-    (leido.impuesto ? `<dt class="impuesto">Impuesto</dt><dd class="impuesto">${dinero(leido.impuesto)}</dd>` : '') +
-    `<dt class="total">Total</dt><dd class="total">${form.monto.value ? dinero(form.monto.value) : '—'}</dd>`;
-}
-$('#form-datos').addEventListener('input', pintarTicket);
-
-function mostrarPaso2() {
-  $('#paso2-imagen').innerHTML = registro.vistaPrevia ? `<div class="marco-factura">${marcoImagen(registro.vistaPrevia, true)}</div>` : '';
-  $('#btn-cambiar-imagen').innerHTML = `${ic('image')} ${registro.archivo ? 'Cambiar imagen' : 'Subir factura'}`;
-  const form = $('#form-datos');
-  const aviso = $('#aviso-ocr');
-  if (!registro.archivo) {
-    aviso.hidden = true;
-    if (!form.fecha_compra.value) form.fecha_compra.value = hoy();
-  } else {
-    const completo = registro.ocrOk && form.comercio.value && form.fecha_compra.value && form.monto.value;
-    aviso.hidden = false;
-    aviso.className = `aviso ${completo ? 'aviso-ok' : 'aviso-alerta'}`;
-    aviso.innerHTML = completo
-      ? `${ic('check')}<div><b>Información leída automáticamente</b><br>Revisa que los datos sean correctos. Puedes editarlos si es necesario.</div>`
-      : `${ic('alert')}<div><b>No se pudo leer toda la información</b><br>Completa o corrige los campos vacíos mirando la factura.</div>`;
-  }
-  pintarTicket();
-  irPaso(2);
-}
-
-const zona = $('#zona-subida');
-$('#input-factura').addEventListener('change', (e) => procesarArchivo(e.target.files[0]));
+$('#input-factura').addEventListener('change', (e) => adjuntarFoto(e.target.files[0]));
+$('#input-camara').addEventListener('change', (e) => adjuntarFoto(e.target.files[0]));
+$('#btn-cambiar-foto').addEventListener('click', () => $('#input-factura').click());
+$('#btn-quitar-foto').addEventListener('click', quitarFoto);
+const zona = $('#adjunto');
 zona.addEventListener('dragover', (e) => { e.preventDefault(); zona.classList.add('arrastrando'); });
 zona.addEventListener('dragleave', () => zona.classList.remove('arrastrando'));
 zona.addEventListener('drop', (e) => {
   e.preventDefault();
   zona.classList.remove('arrastrando');
-  procesarArchivo(e.dataTransfer.files[0]);
+  adjuntarFoto(e.dataTransfer.files[0]);
 });
-$('#btn-sin-factura').addEventListener('click', () => {
-  Object.assign(registro, { archivo: null, vistaPrevia: null, texto: '', leido: null });
-  mostrarPaso2();
-});
-$('#btn-cambiar-imagen').addEventListener('click', () => irPaso(1));
 
 // Persona del gasto: avatares para elegir (y "+" para que la administración agregue una al momento)
 function pintarPersonasElegibles() {
@@ -620,8 +528,6 @@ function pintarPersonasElegibles() {
     </button>`).join('') +
     (esAdmin() ? `<button type="button" class="persona-opcion persona-agregar" id="btn-agregar-persona">
       <span class="avatar-persona">${ic('plus')}</span><span class="nombre-op">Agregar</span></button>` : '');
-  $('#confirmar-error').innerHTML = activas.length || esAdmin() ? ''
-    : 'No hay personas registradas. Pide a la persona administradora que agregue una.';
 }
 
 $('#elegir-persona').addEventListener('click', async (e) => {
@@ -644,44 +550,36 @@ $('#elegir-persona').addEventListener('click', async (e) => {
   }
 });
 
-$('#form-datos').addEventListener('submit', (e) => {
+$('#form-gasto').addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
   const d = datosForm(form);
   const error = !d.comercio.trim() ? 'Escribe el nombre del comercio'
     : !d.fecha_compra ? 'Indica la fecha de la compra'
-      : !(Number(d.monto) > 0) ? 'El monto debe ser mayor a 0' : '';
-  $('#datos-error').textContent = error;
+      : !(Number(d.monto) > 0) ? 'El monto debe ser mayor a 0'
+        : !d.persona_id ? 'Elige de quién es el gasto' : '';
+  $('#confirmar-error').textContent = error;
   if (error) return;
-  registro.datos = { comercio: d.comercio.trim(), fecha_compra: d.fecha_compra, monto: Number(d.monto) };
-
-  $('#conf-comercio').textContent = registro.datos.comercio;
-  $('#conf-fecha').textContent = fechaCorta(registro.datos.fecha_compra);
-  $('#conf-monto').textContent = dinero(registro.datos.monto);
-  pintarPersonasElegibles();
-  $('#paso3-imagen').innerHTML = marcoImagen(registro.vistaPrevia, true);
-  irPaso(3);
-});
-
-$('#btn-anterior').addEventListener('click', () => irPaso(2));
-
-$('#form-confirmar').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const d = datosForm(form);
-  if (!d.persona_id) {
-    $('#confirmar-error').textContent = 'Elige de quién es el gasto';
-    return;
-  }
-  const cuerpo = {
-    ...registro.datos,
-    tarjeta_id: estado.tarjeta?.id,
-    persona_id: Number(d.persona_id),
-    nota: d.nota,
-    archivo: registro.archivo,
-    texto_ocr: registro.texto,
-  };
+  const boton = form.querySelector('[type=submit]');
   await conError($('#confirmar-error'), async () => {
+    // Primero se sube la foto (si hay) y luego se crea el gasto con ella adjunta
+    let archivo = null;
+    if (registro.foto) {
+      $('span', boton).textContent = 'Subiendo foto…';
+      const fd = new FormData();
+      fd.append('imagen', registro.foto);
+      ({ archivo } = await api('/api/facturas', { method: 'POST', body: fd }));
+    }
+    $('span', boton).textContent = 'Guardando…';
+    const cuerpo = {
+      comercio: d.comercio.trim(),
+      fecha_compra: d.fecha_compra,
+      monto: Number(d.monto),
+      tarjeta_id: estado.tarjeta?.id,
+      persona_id: Number(d.persona_id),
+      nota: d.nota,
+      archivo,
+    };
     let r;
     try {
       r = await api('/api/gastos', { method: 'POST', body: cuerpo });
@@ -690,11 +588,11 @@ $('#form-confirmar').addEventListener('submit', async (e) => {
       if (!confirm(`${err.message}. ¿Registrarlo de todas formas?`)) return;
       r = await api('/api/gastos', { method: 'POST', body: { ...cuerpo, forzar: true } });
     }
-    comerciosConocidos = null; // el comercio recién guardado ya cuenta para la próxima lectura
     $('#exito-monto').textContent = dinero(r.gasto.monto);
     irPaso(4);
     celebrarGasto(r.gasto.monto, r.tarjeta.disponible);
-  }, form.querySelector('[type=submit]'));
+  }, boton);
+  $('span', boton).textContent = 'Guardar gasto';
 });
 
 // Animación al guardar: el check aparece, salta confeti y el saldo baja contando hasta el nuevo valor
@@ -737,206 +635,6 @@ function celebrarGasto(monto, disponible) {
 }
 
 $('#btn-otro-gasto').addEventListener('click', abrirRegistro);
-
-// ---------- Escáner de facturas con la cámara ----------
-const escaner = { stream: null, track: null, linterna: false, foto: null, modo: 'apuntando', auto: false, timerAuto: null };
-const CLAVE_AUTO = 'credisiman-escaner-auto';
-const TEXTO_APUNTAR = () => (escaner.auto ? 'Mantén la factura quieta en el marco' : 'Apunta a la factura');
-
-function modoEscaner(modo, texto) {
-  escaner.modo = modo;
-  const el = $('#escaner');
-  el.classList.toggle('leyendo', modo === 'leyendo');
-  el.classList.toggle('listo', modo === 'listo');
-  $('#esc-estado').textContent = texto;
-  $('#escaner-foto').hidden = modo === 'apuntando';
-  $('#esc-resultado').hidden = modo !== 'listo';
-  $('#esc-disparo').setAttribute('aria-label', modo === 'listo' ? 'Tomar otra foto' : 'Tomar foto');
-  vigilarAuto();
-}
-
-function soltarFoto() {
-  if (escaner.foto) URL.revokeObjectURL(escaner.foto);
-  escaner.foto = null;
-}
-
-async function abrirEscaner() {
-  precargarLector();
-  // Sin acceso a la cámara desde el navegador: se usa la cámara del teléfono a través del selector de archivos
-  if (!navigator.mediaDevices?.getUserMedia) {
-    $('#input-camara').click();
-    return;
-  }
-  try {
-    escaner.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: false,
-    });
-  } catch (err) {
-    toast(err.name === 'NotAllowedError'
-      ? 'No diste permiso para usar la cámara. Puedes subir la foto desde la galería.'
-      : 'No se encontró una cámara. Puedes subir la foto desde la galería.', 5000);
-    $('#input-camara').click();
-    return;
-  }
-  escaner.track = escaner.stream.getVideoTracks()[0];
-  escaner.linterna = false;
-  const video = $('#escaner-video');
-  video.srcObject = escaner.stream;
-  video.play().catch(() => {});
-  const linterna = $('#esc-linterna');
-  linterna.classList.remove('activo');
-  linterna.classList.toggle('no-disponible', !escaner.track.getCapabilities?.().torch);
-  try { escaner.auto = localStorage.getItem(CLAVE_AUTO) === '1'; } catch { escaner.auto = false; }
-  $('#esc-auto').setAttribute('aria-pressed', String(escaner.auto));
-  $('#escaner').hidden = false;
-  modoEscaner('apuntando', TEXTO_APUNTAR());
-}
-
-function cerrarEscaner() {
-  clearInterval(escaner.timerAuto);
-  escaner.stream?.getTracks().forEach((t) => t.stop());
-  Object.assign(escaner, { stream: null, track: null, timerAuto: null });
-  $('#escaner-video').srcObject = null;
-  $('#escaner').classList.remove('auto-esperando');
-  soltarFoto();
-  $('#escaner').hidden = true;
-}
-
-async function leerDesdeEscaner(archivo, deGaleria = false) {
-  const error = errorImagen(archivo);
-  if (error) {
-    toast(error);
-    return;
-  }
-  soltarFoto();
-  escaner.foto = URL.createObjectURL(archivo);
-  const img = $('#escaner-foto');
-  img.src = escaner.foto;
-  img.classList.toggle('de-galeria', deGaleria);
-  modoEscaner('leyendo', 'Escaneando factura…');
-  try {
-    const r = await leerImagenFactura(archivo, (texto, porcentaje) => {
-      $('#esc-estado').textContent = porcentaje != null ? `${texto} ${porcentaje}%` : texto;
-    });
-    // La foto se guarda ya derecha: se muestra así en el escáner
-    if (registro.vistaPrevia) {
-      $('#escaner-foto').src = registro.vistaPrevia;
-      $('#escaner-foto').classList.add('de-galeria');
-    }
-    $('#esc-res-comercio').textContent = r.comercio || 'Comercio no detectado';
-    const productos = r.items?.length || 0;
-    $('#esc-res-detalle').textContent = productos ? `${productos} ${productos === 1 ? 'producto detectado' : 'productos detectados'}` : 'Revisa los datos en el siguiente paso';
-    $('#esc-res-total').textContent = r.monto ? dinero(r.monto) : '$ —';
-    $('#esc-res-fecha').textContent = r.fecha ? fechaCorta(r.fecha) : '';
-    $('#esc-res-impuesto').textContent = r.impuesto ? `${dinero(r.impuesto)} imp.` : '';
-    modoEscaner('listo', r.ok && r.monto ? 'Factura leída' : 'Revisa los datos');
-  } catch (err) {
-    toast(err.message, 5000);
-    modoEscaner('apuntando', TEXTO_APUNTAR());
-  }
-}
-
-function capturarFoto() {
-  const video = $('#escaner-video');
-  if (!video.videoWidth) return;
-  const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  canvas.toBlob((blob) => {
-    if (blob) leerDesdeEscaner(new File([blob], 'factura.jpg', { type: 'image/jpeg' }));
-  }, 'image/jpeg', 0.92);
-}
-
-function volverAApuntar() {
-  soltarFoto();
-  modoEscaner('apuntando', TEXTO_APUNTAR());
-}
-
-// Modo Auto: cada 300 ms compara una miniatura de la imagen con la anterior; si casi no cambió durante
-// ~1.5 s (la factura está quieta) y la imagen tiene contenido (no es una pared lisa), toma la foto sola.
-function vigilarAuto() {
-  clearInterval(escaner.timerAuto);
-  escaner.timerAuto = null;
-  const activo = escaner.auto && escaner.modo === 'apuntando' && escaner.stream;
-  $('#escaner').classList.toggle('auto-esperando', Boolean(activo));
-  if (!activo) return;
-  const lado = 40;
-  const lienzo = Object.assign(document.createElement('canvas'), { width: lado, height: lado });
-  const ctx = lienzo.getContext('2d', { willReadFrequently: true });
-  let anterior = null;
-  let quietos = 0;
-  escaner.timerAuto = setInterval(() => {
-    const video = $('#escaner-video');
-    if (!video.videoWidth) return;
-    ctx.drawImage(video, 0, 0, lado, lado);
-    const { data } = ctx.getImageData(0, 0, lado, lado);
-    const gris = new Float32Array(lado * lado);
-    let suma = 0;
-    for (let i = 0; i < gris.length; i++) {
-      gris[i] = (data[i * 4] + data[i * 4 + 1] + data[i * 4 + 2]) / 3;
-      suma += gris[i];
-    }
-    const media = suma / gris.length;
-    let varianza = 0;
-    let cambio = 0;
-    for (let i = 0; i < gris.length; i++) {
-      varianza += (gris[i] - media) ** 2;
-      if (anterior) cambio += Math.abs(gris[i] - anterior[i]);
-    }
-    varianza /= gris.length;
-    cambio = anterior ? cambio / gris.length : Infinity;
-    anterior = gris;
-    quietos = cambio < 4 && varianza > 150 ? quietos + 1 : 0;
-    if (quietos >= 5) {
-      clearInterval(escaner.timerAuto);
-      escaner.timerAuto = null;
-      capturarFoto();
-    }
-  }, 300);
-}
-
-$('#btn-tomar-foto').addEventListener('click', abrirEscaner);
-$('#input-camara').addEventListener('change', (e) => {
-  procesarArchivo(e.target.files[0]);
-  e.target.value = '';
-});
-$('#esc-cerrar').addEventListener('click', cerrarEscaner);
-// Con un resultado en pantalla, el disparador vuelve a la cámara para tomar otra foto
-$('#esc-disparo').addEventListener('click', () => (escaner.modo === 'listo' ? volverAApuntar() : capturarFoto()));
-$('#esc-galeria').addEventListener('click', () => $('#esc-input-galeria').click());
-$('#esc-input-galeria').addEventListener('change', (e) => {
-  if (e.target.files[0]) leerDesdeEscaner(e.target.files[0], true);
-  e.target.value = '';
-});
-$('#esc-auto').addEventListener('click', () => {
-  escaner.auto = !escaner.auto;
-  $('#esc-auto').setAttribute('aria-pressed', String(escaner.auto));
-  try { localStorage.setItem(CLAVE_AUTO, escaner.auto ? '1' : '0'); } catch { /* sin almacenamiento */ }
-  if (escaner.modo === 'apuntando') modoEscaner('apuntando', TEXTO_APUNTAR());
-  toast(escaner.auto ? 'Auto: la foto se toma sola cuando la factura esté quieta' : 'Auto desactivado: usa el botón para tomar la foto');
-});
-$('#esc-continuar').addEventListener('click', () => {
-  cerrarEscaner();
-  mostrarPaso2();
-});
-$('#esc-linterna').addEventListener('click', async () => {
-  if ($('#esc-linterna').classList.contains('no-disponible')) {
-    toast('Este dispositivo no permite encender la linterna desde el navegador');
-    return;
-  }
-  try {
-    await escaner.track.applyConstraints({ advanced: [{ torch: !escaner.linterna }] });
-    escaner.linterna = !escaner.linterna;
-    $('#esc-linterna').classList.toggle('activo', escaner.linterna);
-  } catch {
-    toast('No se pudo encender la linterna');
-  }
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !$('#escaner').hidden) cerrarEscaner();
-});
 
 // ---------- Mis gastos ----------
 let buscarTimer;
@@ -1016,13 +714,6 @@ async function cargarDetalle(id) {
     <dt>Estado</dt><dd><span class="pastilla ${estadoTxt[0]}">${estadoTxt[1]}</span></dd>
     <dt>Fecha de registro</dt><dd>${fechaHora(g.creado_en)}</dd>
     <dt>Nota</dt><dd>${g.nota ? esc(g.nota) : '—'}</dd>`;
-  // Productos: se vuelven a sacar del texto que leyó el OCR al registrar la factura
-  const items = g.texto_ocr ? extraerDatos(g.texto_ocr).items : [];
-  $('#detalle-items').innerHTML = items.length ? `
-    <h2>Productos de la factura</h2>
-    <ul class="ticket-items">${items.map((it) =>
-      `<li><span class="cant">${it.cantidad}x</span><span>${esc(it.descripcion)}</span><span class="precio">${dinero(it.precio)}</span></li>`).join('')}
-    </ul>` : '';
   $('#detalle-acciones').innerHTML = g.estado !== 'anulado'
     ? `<button class="btn btn-peligro" data-anular="${g.id}">${ic('ban')} Anular gasto</button>` : '';
 }

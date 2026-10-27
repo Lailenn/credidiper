@@ -5,7 +5,7 @@ Aplicación web para registrar los gastos de una tarjeta Credisiman y calcular e
 - **Frontend:** HTML, CSS y JavaScript (`public/`), publicado en GitHub Pages
 - **Backend:** Node.js + Express (`src/`), publicado en Render
 - **Base de datos:** SQLite en Turso (`@libsql/client`), compartida por todos
-- **OCR:** Tesseract.js lee el comercio, la fecha y el total de la foto de la factura (`src/ocr.js`)
+- **Facturas:** la foto (tomada con la cámara o subida) se guarda en la base junto al gasto
 
 ## Una sola base de datos para todos
 
@@ -35,8 +35,6 @@ npm run dev      # se reinicia al guardar cambios  (o: npm start)
 Abre http://localhost:3000, o abre `public/index.html` con **Live Server** (llama al servidor del puerto 3000).
 
 Sin `.env`, el servidor usa un archivo local `data/credidiper.db` (sirve para pruebas, pero esos datos no se comparten).
-
-La primera factura que se lee descarga el modelo de español de Tesseract (~2 MB, necesita internet) y lo guarda en `data/tesseract`.
 
 Si la base está vacía se crea un administrador: `admin@credidiper.local` / `admin123`. Cambia la contraseña en **Configuración → Mi cuenta**.
 
@@ -80,9 +78,9 @@ Si se olvida la contraseña: `npm run clave -- NuevaContraseña` desde la carpet
 
 ## Registro de un gasto
 
-1. **Subir factura:** se sube la foto y el OCR extrae comercio, fecha y total (también se puede registrar sin factura).
-2. **Revisar datos:** el usuario corrige lo que el OCR haya leído mal.
-3. **Confirmar:** se elige la persona, se agrega una nota opcional y se guarda. El gasto queda confirmado y se descuenta del disponible.
+En una sola pantalla se escriben comercio, fecha y monto, se elige la persona y, si se quiere, se adjunta la factura
+(**Tomar foto** o **Subir imagen**). Al guardar, la foto se sube y queda adjunta al gasto; el gasto queda confirmado
+y se descuenta del disponible.
 
 ## Cálculo del saldo
 
@@ -109,7 +107,7 @@ Disponible = Límite − Saldo inicial − Gastos confirmados
 | GET / PATCH | `/api/tarjetas/:id` | Detalle con saldo / edita (admin) |
 | GET / POST | `/api/personas` | Lista / crea (admin) |
 | PATCH | `/api/personas/:id` | Cambia `nombre` o `activo` (admin) |
-| POST | `/api/facturas/ocr` | Sube una imagen (`imagen`, multipart) y devuelve lo leído |
+| POST | `/api/facturas` | Sube la foto de la factura (`imagen`, multipart) y devuelve `{ archivo }` para adjuntarla al gasto |
 | GET | `/api/facturas/:gastoId/imagen` | Imagen de la factura (`?descargar=1`) |
 | GET / POST | `/api/gastos` | Lista (`?mes=`, `?persona_id=`, `?q=`, `?estado=`) / registra |
 | GET | `/api/gastos/:id` | Detalle |
