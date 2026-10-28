@@ -18,6 +18,7 @@ const sesionGuardada = {
   },
   borrar: () => {
     try { for (const clave of [CLAVE_TOKEN, CLAVE_USUARIO]) { localStorage.removeItem(clave); sessionStorage.removeItem(clave); } } catch { /* nada */ }
+    datosGuardados.borrar(); // al cerrar sesión no quedan datos de la cuenta en este navegador
   },
   // Datos del usuario de la última sesión: permiten abrir la app al instante sin esperar al servidor
   usuario: () => { try { return JSON.parse(localStorage.getItem(CLAVE_USUARIO) || sessionStorage.getItem(CLAVE_USUARIO)); } catch { return null; } },
@@ -94,7 +95,42 @@ const datosForm = (form) => Object.fromEntries(new FormData(form));
 const urlFactura = (gastoId, descargar) =>
   `${API_BASE}/api/facturas/${gastoId}/imagen?t=${encodeURIComponent(sesionGuardada.leer() || '')}${descargar ? '&descargar=1' : ''}`;
 
+// Últimos datos recibidos de cada consulta, guardados en este navegador. Si el servidor tarda más de
+// ESPERA_MAXIMA (porque Render lo durmió), se muestran estos y la vista se actualiza sola al llegar los nuevos.
+const CLAVE_CACHE = 'credisiman-cache:';
+const ESPERA_MAXIMA = 2000;
+const datosGuardados = {
+  leer: (url) => { try { const t = localStorage.getItem(CLAVE_CACHE + url); return t ? JSON.parse(t) : undefined; } catch { return undefined; } },
+  guardar: (url, datos) => { try { localStorage.setItem(CLAVE_CACHE + url, JSON.stringify(datos)); } catch { /* sin espacio */ } },
+  borrar: () => {
+    try { Object.keys(localStorage).filter((k) => k.startsWith(CLAVE_CACHE)).forEach((k) => localStorage.removeItem(k)); } catch { /* nada */ }
+  },
+};
+const SIN_RESPUESTA = Symbol('sin respuesta');
+// Vistas que se pueden volver a pintar solas (no las que tienen un formulario a medio llenar)
+const VISTAS_REFRESCABLES = ['inicio', 'gastos', 'gasto', 'personas', 'persona', 'reportes'];
+let refrescoProgramado = null;
+function refrescarVistaCuandoLleguen() {
+  clearTimeout(refrescoProgramado);
+  refrescoProgramado = setTimeout(() => {
+    if (VISTAS_REFRESCABLES.includes(location.hash.slice(1).split('/')[0] || 'inicio')) navegar();
+  }, 300);
+}
+
 async function api(url, opciones = {}) {
+  const esLectura = !opciones.method || opciones.method === 'GET';
+  const guardado = esLectura && url !== '/api/auth/me' ? datosGuardados.leer(url) : undefined;
+  const pedido = pedirAlServidor(url, opciones, guardado === undefined);
+  if (guardado === undefined) return pedido;
+  const primero = await Promise.race([pedido, new Promise((r) => { setTimeout(() => r(SIN_RESPUESTA), ESPERA_MAXIMA); })]);
+  if (primero !== SIN_RESPUESTA) return primero;
+  // El servidor está despertando: se muestran los últimos datos y se repinta cuando lleguen los nuevos
+  pedido.then((nuevos) => { if (JSON.stringify(nuevos) !== JSON.stringify(guardado)) refrescarVistaCuandoLleguen(); }).catch(() => {});
+  marcarConexion(true, 'Actualizando…');
+  return guardado;
+}
+
+async function pedirAlServidor(url, opciones, avisarSiTarda) {
   const esForm = opciones.body instanceof FormData;
   const token = sesionGuardada.leer();
   const headers = {};
@@ -102,7 +138,7 @@ async function api(url, opciones = {}) {
   if (token) headers.Authorization = `Bearer ${token}`;
   // El plan gratis de Render duerme el servidor tras un rato sin uso; la primera petición tarda en despertarlo
   const aviso = setTimeout(() => {
-    if ($('#vista-cargando').hidden) toast('Conectando con el servidor… la primera vez puede tardar hasta un minuto.', 60000);
+    if (avisarSiTarda && $('#vista-cargando').hidden) toast('Conectando con el servidor… la primera vez puede tardar hasta un minuto.', 60000);
   }, 4000);
   const res = await fetch(API_BASE + url, {
     ...opciones,
@@ -126,15 +162,17 @@ async function api(url, opciones = {}) {
     mostrarLogin();
   }
   if (!res.ok) throw Object.assign(new Error(datos.error || 'Error inesperado'), { status: res.status, datos });
+  if (!opciones.method || opciones.method === 'GET') datosGuardados.guardar(url, datos);
   return datos;
 }
 
 // Indicador de la barra lateral: punto verde si el servidor responde, rojo si no
-function marcarConexion(ok) {
+function marcarConexion(ok, texto) {
   const el = $('#estado-conexion');
   el.classList.toggle('sin-conexion', !ok);
-  el.dataset.nombre = ok ? 'Conectado al servidor' : 'Sin conexión con el servidor';
-  $('#estado-conexion-texto').textContent = ok ? 'Conectado' : 'Sin conexión';
+  el.dataset.nombre = texto ? 'Mostrando los últimos datos; el servidor está despertando'
+    : ok ? 'Conectado al servidor' : 'Sin conexión con el servidor';
+  $('#estado-conexion-texto').textContent = texto || (ok ? 'Conectado' : 'Sin conexión');
 }
 
 let toastTimer;
@@ -755,6 +793,7 @@ async function cargarPersona(id) {
   $('#persona-ultimo-pago').textContent = persona.ultimo_pago ? `Último depósito: ${fechaCorta(persona.ultimo_pago)}` : 'Aún no ha depositado';
   $('#persona-saldo-etiqueta').textContent = persona.saldo > 0 ? 'Te debe' : persona.saldo < 0 ? 'Saldo a su favor' : 'Está al día';
   $('#persona-saldo').textContent = dinero(Math.abs(persona.saldo));
+  $('#btn-saldar').hidden = !(persona.saldo > 0);
   $('#btn-activar-persona').innerHTML = persona.activo ? `${ic('ban')} Desactivar` : `${ic('check')} Activar`;
 
   const form = $('#form-pago');
@@ -794,6 +833,23 @@ $('#form-pago').addEventListener('submit', async (e) => {
     toast('Depósito registrado');
     await cargarPersona(personaActual.id);
   }, form.querySelector('[type=submit]'));
+});
+
+// Saldar: registra un depósito por todo lo que debe, con fecha de hoy, y la persona queda al día
+$('#btn-saldar').addEventListener('click', async (e) => {
+  const p = personaActual;
+  if (!p || !(p.saldo > 0)) return;
+  if (!confirm(`¿Saldar la cuenta de ${p.nombre}? Se registrará un depósito de ${dinero(p.saldo)} con fecha de hoy y quedará al día.`)) return;
+  await conError(null, async () => {
+    await api(`/api/personas/${p.id}/pagos`, { method: 'POST', body: { monto: p.saldo, fecha: hoy(), nota: 'Cuenta saldada' } });
+    toast(`Cuenta de ${p.nombre} saldada`);
+    await cargarPersona(p.id);
+    const tarjeta = $('.stat.destacado');
+    tarjeta.classList.remove('saldada');
+    void tarjeta.offsetWidth;
+    tarjeta.classList.add('saldada');
+    navigator.vibrate?.(35);
+  }, e.currentTarget);
 });
 
 $('#persona-movimientos').addEventListener('click', async (e) => {
