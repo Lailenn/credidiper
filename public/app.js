@@ -28,7 +28,8 @@ const sesionGuardada = {
 };
 
 // Colores por persona: orden fijo validado (contraste y daltonismo); el color sigue a la persona, no a su posición
-const PALETA = ['#6250d6', '#eb6834', '#2a78d6', '#eda100', '#1baf7a', '#e87ba4', '#008300', '#e34948'];
+// (mismos colores de siempre, reordenados para que las primeras personas combinen con el tema celeste y verde)
+const PALETA = ['#2a78d6', '#1baf7a', '#eda100', '#e87ba4', '#eb6834', '#6250d6', '#008300', '#e34948'];
 const COLOR_OTROS = '#8a87a3';
 
 const ICONOS = {
