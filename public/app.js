@@ -153,7 +153,7 @@ async function pedirAlServidor(url, opciones, avisarSiTarda) {
     marcarConexion(false);
     throw new Error(API_BASE === API_PRODUCCION
       ? 'No se pudo conectar con el servidor. Revisa tu internet e inténtalo de nuevo.'
-      : 'No hay conexión con el servidor. Ejecuta "npm run dev" en la terminal.');
+      : 'No hay conexión con el servidor. Ejecuta "npm start" en la terminal.');
   }).finally(() => {
     clearTimeout(aviso);
     if ($('#toast').textContent.startsWith('Conectando')) $('#toast').hidden = true;
@@ -248,10 +248,30 @@ const pastillaPersona = (id, nombre) => {
   return `<span class="pastilla" style="background:${color}1a;color:var(--tinta)"><span class="punto" style="background:${color}"></span>${esc(nombre)}</span>`;
 };
 
+// Tarjeta con la que se trabaja (resumen de Inicio, registrar gasto, reportes); se recuerda en este navegador
+const CLAVE_TARJETA = 'credisiman-tarjeta-elegida';
+function elegirTarjeta(id) {
+  estado.tarjeta = estado.tarjetas.find((t) => t.id === Number(id)) || estado.tarjeta;
+  try { localStorage.setItem(CLAVE_TARJETA, String(estado.tarjeta?.id ?? '')); } catch { /* sin almacenamiento */ }
+}
+
+// Botones para elegir tarjeta (solo aparecen si hay más de una)
+function pintarElegirTarjeta(contenedor, soloActivas) {
+  const lista = estado.tarjetas.filter((t) => !soloActivas || t.estado === 'activa');
+  (contenedor.closest('#campo-tarjeta') || contenedor).hidden = lista.length < 2;
+  contenedor.innerHTML = lista.map((t) => `
+    <button type="button" class="tarjeta-opcion" role="radio" aria-checked="${t.id === estado.tarjeta?.id}" data-elegir-tarjeta="${t.id}">
+      <span class="mini-tarjeta ${t.emisor === 'davivienda' ? 'dv' : ''}"></span>
+      <span class="to-texto"><strong>${esc(t.nombre)}</strong><small>${t.ultimos4 ? `•••• ${esc(t.ultimos4)}` : ''}${t.estado === 'bloqueada' ? ' · Bloqueada' : ''}</small></span>
+    </button>`).join('');
+}
+
 async function cargarBase() {
   const [tarjetas, personas] = await Promise.all([api('/api/tarjetas'), api('/api/personas')]);
   estado.tarjetas = tarjetas;
-  estado.tarjeta = tarjetas.find((t) => t.estado === 'activa') || tarjetas[0] || null;
+  let guardada = null;
+  try { guardada = Number(localStorage.getItem(CLAVE_TARJETA)); } catch { /* sin almacenamiento */ }
+  estado.tarjeta = tarjetas.find((t) => t.id === guardada) || tarjetas.find((t) => t.estado === 'activa') || tarjetas[0] || null;
   estado.personas = personas;
 }
 
@@ -448,6 +468,8 @@ async function cargarInicio() {
       (esAdmin() ? '<a class="btn btn-primario" href="#configuracion">Configurar tarjeta</a>' : '<p>Pide a la persona administradora que la configure.</p>');
     return;
   }
+  pintarElegirTarjeta($('#inicio-tarjetas'), false);
+  $('#res-nombre').textContent = estado.tarjetas.length > 1 ? `Límite · ${t.nombre}` : 'Límite de la tarjeta';
   const gastado = t.limite - t.disponible;
   const usado = t.limite > 0 ? (gastado / t.limite) * 100 : 0;
   $('#res-limite').textContent = dinero(t.limite);
@@ -469,18 +491,36 @@ function pintarDeudas(contenedor, totalEl) {
   if (totalEl) totalEl.textContent = totalEl.id === 'total-deben' ? dinero(total) : `· Total ${dinero(total)}`;
   contenedor.innerHTML = visibles.length ? visibles
     .sort((a, b) => b.saldo - a.saldo || a.nombre.localeCompare(b.nombre))
-    .map((p) => `
-      <a class="panel deuda-card ${p.activo ? '' : 'inactiva'}" href="#persona/${p.id}">
-        <div class="arriba">
-          ${avatarPersona(p.id)}
-          <div>
-            <p class="nombre">${esc(p.nombre)}</p>
-            <small>${p.saldo > 0 ? 'Te debe' : p.saldo < 0 ? 'Saldo a su favor' : 'Al día'}</small>
+    .map((p) => {
+      const color = colorPersona(p.id);
+      const sinMovimientos = !p.gastado && !p.pagado;
+      const [clase, estadoTxt, etiqueta] = p.saldo > 0 ? ['debe', 'Debe', 'Te debe']
+        : p.saldo < 0 ? ['favor', 'A favor', 'Saldo a su favor']
+          : sinMovimientos ? ['neutra', 'Sin movimientos', 'Sin compras todavía'] : ['al-dia', 'Al día', 'Cuenta saldada'];
+      // Parte de lo que gastó que ya pagó (100 % si está al día o tiene saldo a favor)
+      const pagado = p.gastado > 0 ? Math.min(100, Math.round((p.pagado / p.gastado) * 100)) : p.pagado > 0 ? 100 : 0;
+      return `
+      <a class="panel deuda-card estado-${clase} ${p.activo ? '' : 'inactiva'}" href="#persona/${p.id}">
+        <div class="dc-cabeza">
+          <span class="dc-avatar" style="background:${color}22;color:color-mix(in srgb, ${color} 70%, #000)">${esc(iniciales(p.nombre))}</span>
+          <div class="dc-nombre">
+            <strong>${esc(p.nombre)}</strong>
+            <span class="dc-estado"><span class="punto"></span>${estadoTxt}</span>
           </div>
+          <span class="dc-flecha">${ic('chevron')}</span>
         </div>
-        <p class="cifra ${p.saldo <= 0 ? 'al-dia' : ''}">${dinero(Math.abs(p.saldo))}</p>
-        <div class="detalle"><span>Gastó ${dinero(p.gastado)}</span><span>Depositó ${dinero(p.pagado)}</span></div>
-      </a>`).join('')
+        <div class="dc-monto">
+          <small>${etiqueta}</small>
+          <strong>${p.saldo === 0 && !sinMovimientos ? `${ic('check')} ` : ''}${dinero(Math.abs(p.saldo))}</strong>
+        </div>
+        <div class="dc-barra" role="img" aria-label="Ha pagado el ${pagado}% de lo que gastó"><span style="width:${pagado}%"></span></div>
+        <div class="dc-pie">
+          <div><small>Gastó</small><b>${dinero(p.gastado)}</b></div>
+          <div><small>Depositó</small><b>${dinero(p.pagado)}</b></div>
+          <div><small>Pagado</small><b>${pagado}%</b></div>
+        </div>
+      </a>`;
+    }).join('')
     : '<div class="panel vacio-grande">Aún no hay personas. Agrégalas en <a href="#personas">Personas</a> para llevar la cuenta de lo que te deben.</div>';
 }
 
@@ -521,11 +561,29 @@ async function abrirRegistro() {
   reiniciarRegistro();
   cargarComercios().catch(() => {}); // si falla, el campo funciona igual sin sugerencias
   await cargarBase();
+  // Un gasto solo se puede cargar a una tarjeta activa
+  if (estado.tarjeta?.estado !== 'activa') elegirTarjeta(estado.tarjetas.find((t) => t.estado === 'activa')?.id);
+  pintarElegirTarjeta($('#elegir-tarjeta'), true);
   pintarPersonasElegibles();
   if (!estado.tarjeta || estado.tarjeta.estado !== 'activa') {
     $('#confirmar-error').textContent = estado.tarjeta ? 'La tarjeta está bloqueada.' : 'Primero hay que configurar la tarjeta en Configuración.';
   }
 }
+
+// Elegir tarjeta: en Inicio cambia el resumen; al registrar, a qué tarjeta se carga el gasto
+$('#inicio-tarjetas').addEventListener('click', (e) => {
+  const boton = e.target.closest('[data-elegir-tarjeta]');
+  if (!boton) return;
+  elegirTarjeta(boton.dataset.elegirTarjeta);
+  conError(null, cargarInicio);
+});
+$('#elegir-tarjeta').addEventListener('click', (e) => {
+  const boton = e.target.closest('[data-elegir-tarjeta]');
+  if (!boton) return;
+  elegirTarjeta(boton.dataset.elegirTarjeta);
+  $$('#elegir-tarjeta [data-elegir-tarjeta]').forEach((b) => b.setAttribute('aria-checked', String(b === boton)));
+  $('#confirmar-error').textContent = '';
+});
 
 // Memoria de comercios: al escribir se sugieren los lugares ya usados, y los más frecuentes quedan a un toque
 async function cargarComercios() {
@@ -720,7 +778,7 @@ async function cargarTablaGastos() {
   $('#tabla-gastos').innerHTML = gastos.length ? gastos.map((g) => `
     <tr class="${g.estado === 'anulado' ? 'anulado' : ''}">
       <td>${fechaCorta(g.fecha_compra)}</td>
-      <td><span class="comercio">${esc(g.comercio)}</span>
+      <td><span class="comercio">${esc(g.comercio)}</span>${estado.tarjetas.length > 1 ? `<small class="tarjeta-del-gasto">${esc(g.tarjeta)}</small>` : ''}
         ${g.estado === 'anulado' ? '<span class="pastilla estado-mal">Anulado</span>' : g.estado === 'pendiente' ? '<span class="pastilla estado-pendiente">Pendiente</span>' : ''}</td>
       <td class="num">${dinero(g.monto)}</td>
       <td>${pastillaPersona(g.persona_id, g.persona)}</td>
@@ -1198,30 +1256,50 @@ let tarjetaEditando = null; // id de la tarjeta del formulario; null = tarjeta n
 async function cargarConfiguracion() {
   await cargarBase();
   if (!estado.tarjetas.some((t) => t.id === tarjetaEditando)) tarjetaEditando = estado.tarjeta?.id ?? null;
+  llenarFormTarjeta(); // primero el formulario: la tarjeta elegida se dibuja con sus datos
   pintarTarjetas();
-  llenarFormTarjeta();
 }
 
 const volteadas = new Set(); // tarjetas que se están viendo por el reverso
+const svgOnda = '<svg class="tv-onda" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8a5.5 5.5 0 0 1 0 8M11.5 6a9 9 0 0 1 0 12M15 4a12.5 12.5 0 0 1 0 16"/></svg>';
+// Casita del logo de Davivienda (techo con chimenea, ventanas y puerta en arco, de línea blanca)
+const svgCasa = '<svg class="dv-casa" viewBox="0 0 40 34" aria-hidden="true"><path d="M3 15 20 3l17 12"/><path d="M28 9V4h4v8"/><path d="M7 13v18h26V13"/><path d="M10 19c3-4 7-5 10-5s7 1 10 5"/><rect x="11" y="20" width="5" height="5" rx="1"/><rect x="24" y="20" width="5" height="5" rx="1"/><path d="M17 31v-4a3 3 0 0 1 6 0v4"/></svg>';
+// Chip con sus contactos
+const svgChip = '<svg class="dv-chip" viewBox="0 0 50 40" aria-hidden="true"><rect x=".5" y=".5" width="49" height="39" rx="6"/><path d="M17 .5v11.5M33 .5v11.5M17 28v11.5M33 28v11.5M.5 13.5H17M33 13.5h16.5M.5 26.5H17M33 26.5h16.5"/><rect x="17" y="12" width="16" height="16" rx="3"/></svg>';
 
-function pintarTarjetas() {
-  const nueva = tarjetaEditando === null;
-  $('#tarjetas-fila').innerHTML = estado.tarjetas.map((t) => {
-    const elegida = t.id === tarjetaEditando;
-    const clases = `tarjeta-visual${elegida ? ' elegida' : ''}${volteadas.has(t.id) ? ' volteada' : ''}${t.estado === 'bloqueada' ? ' bloqueada' : ''}`;
-    // Solo se muestran los últimos 4 dígitos; el número completo y el código de seguridad no se guardan
-    const grupos = ['••••', '••••', '••••', t.ultimos4 || '••••'];
-    return `
-    <button type="button" class="${clases}" data-tarjeta="${t.id}" aria-pressed="${elegida}"
-      aria-label="${esc(t.nombre)}${elegida ? ', toca para darle vuelta' : ''}">
-      <span class="tv-giro">
+// Dibujo de una tarjeta (frente y reverso). Solo se muestran los últimos 4 dígitos:
+// el número completo y el código de seguridad nunca se guardan.
+function htmlTarjeta(t, { id, elegida, volteada, bloqueada }) {
+  const ult = t.ultimos4 || '••••';
+  const voltear = bloqueada ? '<span class="tv-estado">Bloqueada</span>' : `<span class="tv-voltear">${ic('repetir')}</span>`;
+  const clases = `tarjeta-visual${t.emisor === 'davivienda' ? ' dv' : ''}${elegida ? ' elegida' : ''}${volteada ? ' volteada' : ''}${bloqueada ? ' bloqueada' : ''}`;
+  const caras = t.emisor === 'davivienda' ? `
+        <span class="tv-cara tv-frente">
+          ${svgCasa}
+          <span class="dv-nombre">DAVIVIENDA</span>
+          <span class="dv-credito">CRÉDITO</span>
+          ${svgOnda}
+          ${svgChip}
+          <span class="dv-black">black</span>
+          <span class="dv-numero"><span>••••</span><span>••••</span><span>••••</span><span>${esc(ult)}</span></span>
+          <span class="dv-vence"><small>VALID<br>THRU</small><b>${esc(t.vencimiento || '--/--')}</b></span>
+          <span class="dv-titular">${esc(t.titular || '')}</span>
+          <span class="dv-mc"><span class="dv-circulos"><i></i><i></i></span><small>mastercard.</small></span>
+          ${voltear}
+        </span>
+        <span class="tv-cara tv-reverso">
+          <span class="dv-banda"></span>
+          <span class="dv-firma"><span>${esc(ult)}</span></span>
+          <span class="dv-legal">Esta tarjeta es propiedad de Banco Davivienda. Su uso está sujeto a las condiciones del contrato. En caso de pérdida o robo, repórtala de inmediato a tu banco.</span>
+          <span class="dv-mc dv-mc-reverso"><span class="dv-circulos"><i></i><i></i></span></span>
+        </span>` : `
         <span class="tv-cara tv-frente">
           <span class="tv-chip"></span>
-          <svg class="tv-onda" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8a5.5 5.5 0 0 1 0 8M11.5 6a9 9 0 0 1 0 12M15 4a12.5 12.5 0 0 1 0 16"/></svg>
+          ${svgOnda}
           <span class="tv-logo"><span><span class="tv-rombo"></span>siman</span><small>CREDISIMAN</small></span>
-          <span class="tv-numero">${t.ultimos4 ? `•••• ${t.ultimos4}` : ''}</span>
+          <span class="tv-numero">${t.ultimos4 ? `•••• ${esc(t.ultimos4)}` : ''}</span>
           <span class="tv-marca">VISA</span>
-          ${t.estado === 'bloqueada' ? '<span class="tv-estado">Bloqueada</span>' : `<span class="tv-voltear">${ic('repetir')}</span>`}
+          ${voltear}
         </span>
         <span class="tv-cara tv-reverso">
           <span class="tv-banda"></span>
@@ -1230,22 +1308,50 @@ function pintarTarjetas() {
           <span class="tv-firma"></span>
           <span class="tv-titular">${esc(t.titular || '')}</span>
           <span class="tv-miembro">MEMBER SINCE</span>
-          <span class="tv-digitos">${grupos.map((g) => `<span>${g}</span>`).join('')}</span>
+          <span class="tv-digitos">${['••••', '••••', '••••', ult].map((g) => `<span>${esc(g)}</span>`).join('')}</span>
           <span class="tv-vence"><small>EXP. DATE</small><b>${esc(t.vencimiento || '--/--')}</b></span>
-        </span>
+        </span>`;
+  return `
+    <button type="button" class="${clases}" data-tarjeta="${id}" aria-pressed="${elegida}"
+      aria-label="${esc(t.nombre || 'Tarjeta nueva')}${elegida ? ', toca para darle vuelta' : ''}">
+      <span class="tv-giro">${caras}
       </span>
     </button>`;
-  }).join('') + `
-    <button type="button" class="tarjeta-agregar${nueva ? ' elegida' : ''}" data-tarjeta="nueva" aria-pressed="${nueva}">
+}
+
+// Datos que se están escribiendo en el formulario: la tarjeta elegida se dibuja con ellos al instante
+function tarjetaDelFormulario() {
+  const form = $('#form-tarjeta');
+  return {
+    nombre: form.nombre.value,
+    emisor: form.emisor.value,
+    titular: form.titular.value.trim(),
+    ultimos4: /^\d{4}$/.test(form.ultimos4.value) ? form.ultimos4.value : '',
+    vencimiento: /^\d{2}\/\d{2}$/.test(form.vencimiento.value) ? form.vencimiento.value : '',
+  };
+}
+
+function pintarTarjetas() {
+  const nueva = tarjetaEditando === null;
+  const enFormulario = $('#form-tarjeta').nombre.value || !nueva ? tarjetaDelFormulario() : null;
+  $('#tarjetas-fila').innerHTML = estado.tarjetas.map((t) => {
+    const elegida = t.id === tarjetaEditando;
+    const datos = elegida && enFormulario ? { ...t, ...enFormulario } : t;
+    return htmlTarjeta(datos, { id: t.id, elegida, volteada: volteadas.has(t.id), bloqueada: t.estado === 'bloqueada' });
+  }).join('')
+    // Tarjeta nueva: se ve dibujada (con el tipo elegido) mientras se llena el formulario
+    + (nueva ? htmlTarjeta(tarjetaDelFormulario(), { id: 'nueva', elegida: true, volteada: volteadas.has('nueva') }) : `
+    <button type="button" class="tarjeta-agregar" data-tarjeta="nueva" aria-pressed="false">
       <span class="ta-mas">${ic('plus')}</span>
       <span>${estado.tarjetas.length ? 'Agregar otra tarjeta' : 'Agregar tarjeta'}</span>
-    </button>`;
-  $('#ayuda-tarjeta').hidden = !estado.tarjetas.length;
+    </button>`);
+  $('#ayuda-tarjeta').hidden = !estado.tarjetas.length && !nueva;
 }
 
 function llenarFormTarjeta() {
   const form = $('#form-tarjeta');
   const t = estado.tarjetas.find((x) => x.id === tarjetaEditando);
+  form.emisor.value = t?.emisor ?? 'credisiman';
   form.nombre.value = t?.nombre ?? '';
   form.titular.value = t?.titular ?? '';
   form.ultimos4.value = t?.ultimos4 ?? '';
@@ -1263,15 +1369,34 @@ $('#tarjetas-fila').addEventListener('click', (e) => {
   if (!boton) return;
   const id = boton.dataset.tarjeta === 'nueva' ? null : Number(boton.dataset.tarjeta);
   // Tocar la tarjeta que ya se está editando la da vuelta (solo cambia la clase para que se vea la animación)
-  if (id !== null && id === tarjetaEditando) {
-    if (!volteadas.delete(id)) volteadas.add(id);
-    boton.classList.toggle('volteada', volteadas.has(id));
+  if (id === tarjetaEditando && boton.classList.contains('tarjeta-visual')) {
+    const clave = id ?? 'nueva';
+    if (!volteadas.delete(clave)) volteadas.add(clave);
+    boton.classList.toggle('volteada', volteadas.has(clave));
     return;
   }
   tarjetaEditando = id;
-  pintarTarjetas();
   llenarFormTarjeta();
+  pintarTarjetas();
   if (tarjetaEditando === null) $('#form-tarjeta').nombre.focus();
+});
+
+// Al cambiar el tipo, el nombre sugerido sigue al tipo (si no se escribió otro)
+const NOMBRES_TIPO = { credisiman: 'Credisiman Visa', davivienda: 'Davivienda Black' };
+$('#form-tarjeta').addEventListener('change', (e) => {
+  if (e.target.name !== 'emisor') return;
+  const nombre = $('#form-tarjeta').nombre;
+  if (!nombre.value || Object.values(NOMBRES_TIPO).includes(nombre.value)) nombre.value = NOMBRES_TIPO[e.target.value];
+  pintarTarjetas();
+});
+// Lo que se escribe (titular, últimos 4, vencimiento) aparece en el dibujo al instante
+$('#form-tarjeta').addEventListener('input', (e) => {
+  if (['titular', 'ultimos4', 'vencimiento', 'nombre'].includes(e.target.name)) {
+    // Para ver el titular y los dígitos, la tarjeta Credisiman se muestra por el reverso
+    const clave = tarjetaEditando ?? 'nueva';
+    if (['titular', 'ultimos4'].includes(e.target.name) && $('#form-tarjeta').emisor.value === 'credisiman') volteadas.add(clave);
+    requestAnimationFrame(pintarTarjetas);
+  }
 });
 
 // Escribe la barra del vencimiento sola: "0429" -> "04/29"

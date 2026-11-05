@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- La app es de diseño claro: evita que el navegador del teléfono la oscurezca por su cuenta -->
   <meta name="color-scheme" content="only light">
-  <meta name="theme-color" content="#f2f7f7">
+  <meta name="theme-color" content="#f4f8fb">
   <title>Credisiman · Control de gastos</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -20,8 +20,8 @@
   <!-- ================= Inicio de sesión ================= -->
   <main id="vista-login" class="login" hidden>
     <svg class="login-ondas" viewBox="0 0 1440 400" preserveAspectRatio="none" aria-hidden="true">
-      <path d="M0 220C240 140 420 320 720 250S1200 120 1440 200V400H0Z" fill="#d3f0f4"/>
-      <path d="M0 300C300 230 520 380 820 310S1240 230 1440 290V400H0Z" fill="#bde9dc"/>
+      <path d="M0 220C240 140 420 320 720 250S1200 120 1440 200V400H0Z" fill="#d6ecfa"/>
+      <path d="M0 300C300 230 520 380 820 310S1240 230 1440 290V400H0Z" fill="#cdeedb"/>
     </svg>
     <form id="form-login" class="login-caja" novalidate>
       <div class="logo-grande"><i data-icon="card"></i></div>
@@ -89,11 +89,12 @@
         </header>
         <div id="inicio-sin-tarjeta" class="panel vacio-grande" hidden></div>
         <div id="inicio-contenido">
+          <div class="elegir-tarjeta" id="inicio-tarjetas" role="radiogroup" aria-label="Tarjeta del resumen" hidden></div>
           <div class="inicio-grid">
             <div class="panel resumen">
               <div class="resumen-top">
                 <div>
-                  <p class="etiqueta">Límite de la tarjeta</p>
+                  <p class="etiqueta" id="res-nombre">Límite de la tarjeta</p>
                   <p class="cifra-hero" id="res-limite"></p>
                 </div>
                 <span class="icono-tarjeta"><i data-icon="card"></i></span>
@@ -135,6 +136,10 @@
           <!-- Formulario del gasto con su factura adjunta (foto tomada o imagen subida) -->
           <form class="paso registro-form" data-paso="1" id="form-gasto" novalidate>
             <div class="col-datos">
+              <div class="campo-personas" id="campo-tarjeta" hidden>
+                <span class="etiqueta">¿Con qué tarjeta?</span>
+                <div class="elegir-tarjeta" id="elegir-tarjeta" role="radiogroup" aria-label="Tarjeta del gasto"></div>
+              </div>
               <label>Comercio <input name="comercio" required maxlength="200" placeholder="Ej. Super Selectos" autocomplete="off" list="lista-comercios"></label>
               <datalist id="lista-comercios"></datalist>
               <div class="comercios-frecuentes" id="comercios-frecuentes" aria-label="Lugares frecuentes"></div>
@@ -372,6 +377,13 @@
             </div>
             <div class="tarjetas-fila" id="tarjetas-fila"></div>
             <p class="ayuda-tarjeta" id="ayuda-tarjeta" hidden>Toca la tarjeta marcada para darle vuelta.</p>
+            <div class="campo-personas">
+              <span class="etiqueta">Tipo de tarjeta</span>
+              <div class="segmentado dos" role="radiogroup" aria-label="Tipo de tarjeta">
+                <label><input type="radio" name="emisor" value="credisiman" checked><span>Credisiman Visa</span></label>
+                <label><input type="radio" name="emisor" value="davivienda"><span>Davivienda Black</span></label>
+              </div>
+            </div>
             <label>Nombre <input name="nombre" required maxlength="100" placeholder="Credisiman Visa"></label>
             <label><span>Titular <span class="opcional">(como aparece en el reverso)</span></span>
               <input name="titular" maxlength="40" placeholder="Nombre y apellido" autocomplete="off">

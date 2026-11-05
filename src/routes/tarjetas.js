@@ -20,6 +20,10 @@ const vencimiento = (valor) => {
   return texto;
 };
 
+// Banco de la tarjeta: define cómo se dibuja (Credisiman Visa o Davivienda Black Mastercard)
+const EMISORES = ['credisiman', 'davivienda'];
+const emisor = (valor) => (valor ? v.opcion(valor, 'tipo de tarjeta', EMISORES) : 'credisiman');
+
 // Todas las tarjetas con su saldo en una sola consulta
 router.get('/', async (req, res) => {
   const filas = await todos(`
@@ -48,8 +52,8 @@ router.post('/', requireRol('admin'), async (req, res) => {
   const saldoInicial = v.dinero(req.body.saldo_inicial ?? 0, 'saldo inicial');
   if (saldoInicial > limite) throw new v.ErrorValidacion('El saldo inicial no puede superar el límite');
   const { id } = await ejecutar(
-    'INSERT INTO tarjetas (nombre, limite, saldo_inicial, ultimos4, titular, vencimiento) VALUES (?, ?, ?, ?, ?, ?)',
-    [nombre, limite, saldoInicial, ultimos4(req.body.ultimos4), titular(req.body.titular), vencimiento(req.body.vencimiento)],
+    'INSERT INTO tarjetas (nombre, limite, saldo_inicial, ultimos4, titular, vencimiento, emisor) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [nombre, limite, saldoInicial, ultimos4(req.body.ultimos4), titular(req.body.titular), vencimiento(req.body.vencimiento), emisor(req.body.emisor)],
   );
   res.status(201).json(await saldoTarjeta(id));
 });
@@ -65,14 +69,15 @@ router.patch('/:id', requireRol('admin'), async (req, res) => {
   const digitos = req.body.ultimos4 !== undefined ? ultimos4(req.body.ultimos4) : actual.ultimos4;
   const nombreTitular = req.body.titular !== undefined ? titular(req.body.titular) : actual.titular;
   const vence = req.body.vencimiento !== undefined ? vencimiento(req.body.vencimiento) : actual.vencimiento;
+  const banco = req.body.emisor !== undefined ? emisor(req.body.emisor) : actual.emisor;
   const estado = req.body.estado !== undefined ? v.opcion(req.body.estado, 'estado', ['activa', 'bloqueada']) : actual.estado;
   if (limite - saldoInicial < actual.confirmados) {
     throw new v.ErrorValidacion('Con ese límite los gastos confirmados quedarían por encima del crédito');
   }
 
   await ejecutar(
-    'UPDATE tarjetas SET nombre = ?, limite = ?, saldo_inicial = ?, estado = ?, ultimos4 = ?, titular = ?, vencimiento = ? WHERE id = ?',
-    [nombre, limite, saldoInicial, estado, digitos, nombreTitular, vence, tarjetaId],
+    'UPDATE tarjetas SET nombre = ?, limite = ?, saldo_inicial = ?, estado = ?, ultimos4 = ?, titular = ?, vencimiento = ?, emisor = ? WHERE id = ?',
+    [nombre, limite, saldoInicial, estado, digitos, nombreTitular, vence, banco, tarjetaId],
   );
   res.json(await saldoTarjeta(tarjetaId));
 });

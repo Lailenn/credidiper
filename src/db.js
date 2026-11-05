@@ -74,7 +74,8 @@ export async function iniciarBase() {
       estado        TEXT NOT NULL DEFAULT 'activa' CHECK (estado IN ('activa', 'bloqueada')),
       ultimos4      TEXT,
       titular       TEXT,
-      vencimiento   TEXT
+      vencimiento   TEXT,
+      emisor        TEXT NOT NULL DEFAULT 'credisiman' CHECK (emisor IN ('credisiman', 'davivienda'))
     );
 
     CREATE TABLE IF NOT EXISTS gastos (
@@ -143,7 +144,7 @@ export async function iniciarBase() {
   const faltantes = {
     gastos: [['persona_id', 'INTEGER REFERENCES personas(id)'], ['nota', 'TEXT'], ['creado_en', 'TEXT']],
     facturas: [['imagen', 'BLOB'], ['tipo', 'TEXT']],
-    tarjetas: [['ultimos4', 'TEXT'], ['titular', 'TEXT'], ['vencimiento', 'TEXT']],
+    tarjetas: [['ultimos4', 'TEXT'], ['titular', 'TEXT'], ['vencimiento', 'TEXT'], ['emisor', "TEXT NOT NULL DEFAULT 'credisiman'"]],
     pagos: [['metodo', 'TEXT'], ['comprobante', 'BLOB'], ['comprobante_tipo', 'TEXT'],
       ['anulado', 'INTEGER NOT NULL DEFAULT 0'], ['anulado_en', 'TEXT']],
   };
