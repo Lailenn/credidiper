@@ -840,9 +840,16 @@ section[data-vista="configuracion"] .btn-primario { padding: 12px 26px; }
 .mini-tarjeta::after { content: ""; position: absolute; top: 6px; left: 11px; width: 7px; height: 6px; border-radius: 1.5px; background: #d9d4c6; }
 .mini-tarjeta.dv { width: 38px; height: 24px; background: #131417; }
 .mini-tarjeta.dv::after { top: 8px; left: 5px; width: 7px; height: 6px; background: #d4d4d9; }
-.to-texto { display: flex; flex-direction: column; line-height: 1.25; }
+.to-texto { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
 .to-texto strong { font-size: .88rem; font-weight: 600; }
+.to-texto strong small { font-weight: 400; }
 .to-texto small { font-size: .74rem; }
+.to-texto small b { color: var(--verde); font-weight: 650; }
+/* En Inicio: tarjetas más anchas con su disponible y una barra de uso del límite */
+.tarjeta-opcion.con-barra { flex: 1 1 240px; max-width: 340px; padding: 12px 16px 12px 12px; gap: 12px; }
+.to-barra { display: block; height: 5px; margin-top: 7px; border-radius: 99px; background: #e8eef3; overflow: hidden; }
+.to-barra span { display: block; height: 100%; border-radius: inherit; background: var(--marca); transform-origin: left; animation: crecer .8s var(--curva) .1s both; }
+.to-barra.alto span { background: var(--rojo); }
 .tarjeta-del-gasto { display: block; font-size: .74rem; }
 
 /* Contraseñas con ojo y requisitos */

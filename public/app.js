@@ -255,15 +255,23 @@ function elegirTarjeta(id) {
   try { localStorage.setItem(CLAVE_TARJETA, String(estado.tarjeta?.id ?? '')); } catch { /* sin almacenamiento */ }
 }
 
-// Botones para elegir tarjeta (solo aparecen si hay más de una)
-function pintarElegirTarjeta(contenedor, soloActivas) {
+// Botones para elegir tarjeta (solo aparecen si hay más de una). Cada uno muestra lo que le queda disponible;
+// con "conBarra" (Inicio) también cuánto del límite se ha usado, para ver el saldo de todas las tarjetas a la vez.
+function pintarElegirTarjeta(contenedor, soloActivas, conBarra = false) {
   const lista = estado.tarjetas.filter((t) => !soloActivas || t.estado === 'activa');
   (contenedor.closest('#campo-tarjeta') || contenedor).hidden = lista.length < 2;
-  contenedor.innerHTML = lista.map((t) => `
-    <button type="button" class="tarjeta-opcion" role="radio" aria-checked="${t.id === estado.tarjeta?.id}" data-elegir-tarjeta="${t.id}">
+  contenedor.innerHTML = lista.map((t) => {
+    const usado = t.limite > 0 ? Math.min(100, Math.max(0, ((t.limite - t.disponible) / t.limite) * 100)) : 0;
+    return `
+    <button type="button" class="tarjeta-opcion${conBarra ? ' con-barra' : ''}" role="radio" aria-checked="${t.id === estado.tarjeta?.id}" data-elegir-tarjeta="${t.id}">
       <span class="mini-tarjeta ${t.emisor === 'davivienda' ? 'dv' : ''}"></span>
-      <span class="to-texto"><strong>${esc(t.nombre)}</strong><small>${t.ultimos4 ? `•••• ${esc(t.ultimos4)}` : ''}${t.estado === 'bloqueada' ? ' · Bloqueada' : ''}</small></span>
-    </button>`).join('');
+      <span class="to-texto">
+        <strong>${esc(t.nombre)}${t.ultimos4 ? ` <small>•••• ${esc(t.ultimos4)}</small>` : ''}</strong>
+        <small>${t.estado === 'bloqueada' ? 'Bloqueada · ' : ''}Disponible <b>${dinero(t.disponible)}</b>${conBarra ? ` de ${dinero(t.limite)}` : ''}</small>
+        ${conBarra ? `<span class="to-barra${usado > 85 ? ' alto' : ''}"><span style="width:${usado}%"></span></span>` : ''}
+      </span>
+    </button>`;
+  }).join('');
 }
 
 async function cargarBase() {
@@ -468,7 +476,7 @@ async function cargarInicio() {
       (esAdmin() ? '<a class="btn btn-primario" href="#configuracion">Configurar tarjeta</a>' : '<p>Pide a la persona administradora que la configure.</p>');
     return;
   }
-  pintarElegirTarjeta($('#inicio-tarjetas'), false);
+  pintarElegirTarjeta($('#inicio-tarjetas'), false, true);
   $('#res-nombre').textContent = estado.tarjetas.length > 1 ? `Límite · ${t.nombre}` : 'Límite de la tarjeta';
   const gastado = t.limite - t.disponible;
   const usado = t.limite > 0 ? (gastado / t.limite) * 100 : 0;
@@ -704,6 +712,7 @@ $('#form-gasto').addEventListener('submit', async (e) => {
       r = await api('/api/gastos', { method: 'POST', body: { ...cuerpo, forzar: true } });
     }
     $('#exito-monto').textContent = dinero(r.gasto.monto);
+    $('#exito-tarjeta').textContent = r.tarjeta.nombre;
     irPaso(4);
     celebrarGasto(r.gasto.monto, r.tarjeta.disponible);
   }, boton);
