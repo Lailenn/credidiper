@@ -68,6 +68,7 @@
         <a href="#inicio" data-vista="inicio" data-nombre="Inicio"><span class="lat-icono"><i data-icon="home"></i></span><span class="lat-texto">Inicio</span></a>
         <a href="#registrar" data-vista="registrar" data-nombre="Registrar gasto"><span class="lat-icono"><i data-icon="factura"></i></span><span class="lat-texto">Registrar gasto</span></a>
         <a href="#gastos" data-vista="gastos" data-nombre="Mis gastos"><span class="lat-icono"><i data-icon="historial"></i></span><span class="lat-texto">Mis gastos</span></a>
+        <a href="#depositos" data-vista="depositos" data-nombre="Depósitos y abonos"><span class="lat-icono"><i data-icon="billetera"></i></span><span class="lat-texto">Depósitos</span></a>
         <a href="#reportes" data-vista="reportes" data-nombre="Reportes"><span class="lat-icono"><i data-icon="chart"></i></span><span class="lat-texto">Reportes</span></a>
 
         <p class="lat-seccion">Gestión</p>
@@ -116,7 +117,7 @@
               <a href="#registrar" class="btn btn-primario"><i data-icon="plus"></i> Registrar nuevo gasto</a>
               <a href="#reportes" class="btn btn-suave"><i data-icon="chart"></i> Ver reportes</a>
               <a href="#gastos" class="btn btn-suave"><i data-icon="list"></i> Ver mis gastos</a>
-              <a href="#personas" class="btn btn-suave"><i data-icon="users"></i> Cobros y depósitos</a>
+              <a href="#depositos" class="btn btn-suave"><i data-icon="billetera"></i> Depósitos y abonos</a>
             </div>
           </div>
           <h2 class="titulo-seccion">Lo que te deben <small id="inicio-total-deben"></small></h2>
@@ -134,7 +135,9 @@
           <!-- Formulario del gasto con su factura adjunta (foto tomada o imagen subida) -->
           <form class="paso registro-form" data-paso="1" id="form-gasto" novalidate>
             <div class="col-datos">
-              <label>Comercio <input name="comercio" required maxlength="200" placeholder="Ej. Super Selectos" autocomplete="off"></label>
+              <label>Comercio <input name="comercio" required maxlength="200" placeholder="Ej. Super Selectos" autocomplete="off" list="lista-comercios"></label>
+              <datalist id="lista-comercios"></datalist>
+              <div class="comercios-frecuentes" id="comercios-frecuentes" aria-label="Lugares frecuentes"></div>
               <div class="fila-dos">
                 <label>Fecha <input name="fecha_compra" type="date" required></label>
                 <label>Monto
@@ -226,6 +229,36 @@
         </div>
       </section>
 
+      <!-- ---------- Depósitos y abonos (dinero que las personas te entregan; no es el pago al banco) ---------- -->
+      <section data-vista="depositos" hidden>
+        <header class="encabezado">
+          <h1>Depósitos y abonos</h1>
+          <div class="encabezado-controles">
+            <select class="sel-mes" aria-label="Mes"></select>
+            <button type="button" class="btn btn-primario" data-admin data-registrar-deposito><i data-icon="plus"></i> Registrar depósito</button>
+          </div>
+        </header>
+        <div class="stats cuatro">
+          <div class="panel stat"><span class="stat-icono verde"><i data-icon="billetera"></i></span>
+            <div><p class="etiqueta">Recibido en el mes</p><p class="cifra" id="dep-total"></p></div></div>
+          <div class="panel stat"><span class="stat-icono morado"><i data-icon="list"></i></span>
+            <div><p class="etiqueta">Depósitos registrados</p><p class="cifra" id="dep-cantidad"></p></div></div>
+          <div class="panel stat"><span class="stat-icono azul"><i data-icon="users"></i></span>
+            <div><p class="etiqueta">Personas que abonaron</p><p class="cifra" id="dep-personas"></p></div></div>
+          <div class="panel stat"><span class="stat-icono naranja"><i data-icon="historial"></i></span>
+            <div><p class="etiqueta">Pendiente por recuperar</p><p class="cifra" id="dep-pendiente"></p><small id="dep-pendiente-nota">a la fecha, entre todas</small></div></div>
+        </div>
+        <div class="chips" id="chips-depositos"></div>
+        <div class="panel tabla-panel">
+          <table class="tabla">
+            <thead>
+              <tr><th>Fecha</th><th>Persona</th><th>Método</th><th>Referencia</th><th>Comprobante</th><th class="num">Importe</th><th class="der" data-admin>Acciones</th></tr>
+            </thead>
+            <tbody id="tabla-depositos"></tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- ---------- Detalle del gasto ---------- -->
       <section data-vista="detalle" hidden>
         <header class="encabezado">
@@ -266,6 +299,7 @@
         <header class="encabezado">
           <h1><a href="#personas" class="btn-icono" aria-label="Volver"><i data-icon="back"></i></a> <span id="persona-nombre"></span></h1>
           <div class="encabezado-controles">
+            <button type="button" class="btn btn-primario" data-admin data-registrar-deposito><i data-icon="plus"></i> Registrar abono</button>
             <button type="button" class="btn btn-borde" id="btn-renombrar-persona"><i data-icon="pencil"></i> Cambiar nombre</button>
             <button type="button" class="btn btn-borde" id="btn-activar-persona"></button>
           </div>
@@ -279,20 +313,9 @@
             <div><p class="etiqueta" id="persona-saldo-etiqueta">Te debe</p><p class="cifra" id="persona-saldo"></p>
               <button type="button" class="btn btn-saldar" id="btn-saldar" hidden><i data-icon="check"></i> Saldar cuenta</button></div></div>
         </div>
-        <div class="persona-grid">
-          <form id="form-pago" class="panel form-vertical" novalidate>
-            <h2>Registrar depósito</h2>
-            <label>Monto depositado <span class="campo-prefijo"><span>$</span><input name="monto" type="number" step="0.01" min="0.01" required inputmode="decimal"></span></label>
-            <label>Fecha del depósito <input name="fecha" type="date" required></label>
-            <label>Referencia (opcional) <input name="referencia" maxlength="60" placeholder="Número de comprobante"></label>
-            <label>Nota (opcional) <input name="nota" maxlength="300" placeholder="Ej. Abono de octubre"></label>
-            <p class="mensaje-error" id="pago-error" role="alert"></p>
-            <button type="submit" class="btn btn-primario"><i data-icon="plus"></i> Guardar depósito</button>
-          </form>
-          <div class="panel">
-            <h2>Movimientos</h2>
-            <ul class="movimientos" id="persona-movimientos"></ul>
-          </div>
+        <div class="panel">
+          <h2>Movimientos</h2>
+          <ul class="movimientos" id="persona-movimientos"></ul>
         </div>
       </section>
 
@@ -401,6 +424,73 @@
       </section>
     </main>
   </div>
+
+  <!-- ================= Modal: registrar depósito ================= -->
+  <dialog class="modal" id="modal-deposito" aria-labelledby="modal-deposito-titulo">
+    <form id="form-deposito" class="form-vertical" novalidate>
+      <div class="modal-cabeza">
+        <span class="config-icono"><i data-icon="billetera"></i></span>
+        <div><h2 id="modal-deposito-titulo">Registrar depósito</h2><p>Dinero que una persona te entrega por sus compras con tu tarjeta.</p></div>
+        <button type="button" class="btn-icono" data-cerrar-modal aria-label="Cerrar"><i data-icon="x"></i></button>
+      </div>
+
+      <div class="campo-personas">
+        <span class="etiqueta">¿Quién te depositó?</span>
+        <input type="hidden" name="persona_id" id="dep-persona">
+        <div class="elegir-persona" id="dep-elegir-persona" role="radiogroup" aria-label="Persona que deposita"></div>
+      </div>
+
+      <div class="fila-dos">
+        <label>Importe
+          <span class="campo-prefijo"><span>$</span><input name="monto" type="number" step="0.01" min="0.01" required inputmode="decimal" placeholder="0.00"></span>
+        </label>
+        <label>Fecha del depósito <input name="fecha" type="date" required></label>
+      </div>
+
+      <!-- Cómo queda la cuenta de la persona con este depósito -->
+      <div class="dep-cuenta" id="dep-cuenta" hidden></div>
+
+      <div class="campo-personas">
+        <span class="etiqueta">Método de pago</span>
+        <div class="segmentado" role="radiogroup" aria-label="Método de pago">
+          <label><input type="radio" name="metodo" value="efectivo"><span>Efectivo</span></label>
+          <label><input type="radio" name="metodo" value="transferencia" checked><span>Transferencia</span></label>
+          <label><input type="radio" name="metodo" value="deposito"><span>Depósito bancario</span></label>
+        </div>
+      </div>
+
+      <label><span>Referencia o n.º de comprobante <span class="opcional">(opcional)</span></span>
+        <input name="referencia" maxlength="60" placeholder="Ej. 000123" autocomplete="off">
+      </label>
+
+      <div class="dep-foto">
+        <span class="etiqueta">Foto del comprobante <span class="opcional">(opcional)</span></span>
+        <div class="dep-foto-caja" id="dep-foto-vacia">
+          <label class="btn btn-borde"><i data-icon="camera"></i> Tomar foto
+            <input type="file" id="dep-camara" accept="image/*" capture="environment" hidden>
+          </label>
+          <label class="btn btn-borde"><i data-icon="image"></i> Subir imagen
+            <input type="file" id="dep-archivo" accept="image/jpeg,image/png,image/webp" hidden>
+          </label>
+        </div>
+        <div class="dep-foto-caja lleno" id="dep-foto-llena" hidden>
+          <img id="dep-foto-img" alt="Comprobante">
+          <span>Comprobante adjunto</span>
+          <button type="button" class="btn btn-borde btn-chico btn-quitar" id="dep-quitar-foto"><i data-icon="x"></i> Quitar</button>
+        </div>
+      </div>
+
+      <label><span>Nota <span class="opcional">(opcional)</span></span>
+        <input name="nota" maxlength="300" placeholder="Ej. Abono de noviembre">
+      </label>
+
+      <p class="mensaje-error" id="deposito-error" role="alert"></p>
+      <div class="botones">
+        <button type="button" class="btn btn-borde" data-cerrar-modal>Cancelar</button>
+        <button type="submit" class="btn btn-primario"><i data-icon="check"></i> <span>Guardar depósito</span></button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Visor de imagen y tooltip -->
   <div class="visor" id="visor" hidden><button class="btn-icono" aria-label="Cerrar"><i data-icon="x"></i></button><img alt="Factura"></div>

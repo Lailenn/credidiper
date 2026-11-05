@@ -496,6 +496,84 @@ label { display: flex; flex-direction: column; gap: 6px; font-size: .88rem; colo
 .movimientos .vacio { border: 0; display: block; }
 @media (max-width: 1080px) { .persona-grid { grid-template-columns: 1fr; } }
 
+.movimientos li.anulado .mov-texto strong, .movimientos li.anulado .mov-monto { color: var(--tenue); }
+.movimientos li.anulado .mov-monto { text-decoration: line-through; }
+.movimientos li.anulado .mov-icono { filter: grayscale(1); opacity: .6; }
+.mov-texto strong .pastilla { margin-left: 6px; font-size: .72rem; padding: 1px 8px; vertical-align: 1px; }
+.mov-monto { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.mov-comprobante { font-size: .76rem; font-weight: 600; }
+
+/* ---------- Depósitos y abonos ---------- */
+.stats.cuatro { grid-template-columns: repeat(4, 1fr); }
+.stat-icono.azul { background: #e7f0fc; color: #2a78d6; }
+.importe-deposito { color: var(--verde); font-weight: 700; }
+.tabla tr.anulado .importe-deposito { color: var(--tenue); }
+.metodo-efectivo { background: var(--verde-50); color: var(--verde); }
+.metodo-transferencia { background: var(--marca-50); color: var(--marca-600); }
+.metodo-deposito { background: #e7f0fc; color: #1f63b8; }
+.enlace-limpio { text-decoration: none !important; }
+.enlace-limpio:hover .pastilla { box-shadow: 0 0 0 1px var(--marca-100); }
+@media (max-width: 1080px) { .stats.cuatro { grid-template-columns: repeat(2, 1fr); } }
+
+/* Memoria de comercios en "Registrar gasto" */
+.comercios-frecuentes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
+.comercios-frecuentes:empty { display: none; }
+.chip-chico { padding: 4px 11px; font-size: .8rem; }
+
+/* Modal (se abre con transición suave; se cierra con Esc, la X o tocando fuera) */
+.modal {
+  width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 26px;
+  border: 0; border-radius: 22px; background: var(--panel); color: var(--tinta);
+  box-shadow: 0 24px 60px rgba(31, 29, 61, .25); overflow-y: auto;
+  transition: opacity .2s ease, transform .25s cubic-bezier(.2, .9, .3, 1);
+}
+.modal::backdrop { background: rgba(31, 29, 61, .38); backdrop-filter: blur(3px); transition: opacity .2s ease; }
+@starting-style {
+  .modal[open] { opacity: 0; transform: translateY(18px) scale(.97); }
+  .modal[open]::backdrop { opacity: 0; }
+}
+.modal.cerrando { opacity: 0; transform: translateY(12px) scale(.98); }
+.modal.cerrando::backdrop { opacity: 0; }
+.modal-cabeza { display: flex; gap: 14px; align-items: center; }
+.modal-cabeza h2 { margin: 0; }
+.modal-cabeza p { color: var(--tinta-2); font-size: .85rem; margin-top: 2px; }
+.modal-cabeza .btn-icono { margin-left: auto; align-self: flex-start; }
+.modal .form-vertical { gap: 16px; }
+.modal .botones { margin-top: 0; }
+.modal .botones .btn { white-space: nowrap; padding-inline: 14px; }
+@media (prefers-reduced-motion: reduce) { .modal, .modal::backdrop { transition: none; } }
+
+/* Método de pago: control segmentado */
+.segmentado { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: #f1f0f7; border-radius: 12px; }
+.segmentado label { display: block; cursor: pointer; }
+.segmentado input { position: absolute; opacity: 0; pointer-events: none; width: auto; }
+.segmentado span {
+  display: block; text-align: center; padding: 8px 6px; border-radius: 9px; font-size: .85rem; font-weight: 600; color: var(--tinta-2);
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.segmentado input:checked + span { background: #fff; color: var(--marca-600); box-shadow: 0 1px 3px rgba(31, 29, 61, .12); }
+.segmentado input:focus-visible + span { outline: 2px solid var(--marca); outline-offset: 1px; }
+
+/* Cómo queda la cuenta de la persona con el depósito */
+.dep-cuenta {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 11px 14px; border-radius: 12px;
+  background: var(--naranja-50); color: var(--tinta-2); font-size: .87rem; animation: exito-subir .25s ease-out;
+}
+.dep-cuenta > svg.ic { color: var(--naranja); }
+.dep-cuenta b { color: var(--tinta); }
+.dep-cuenta span { flex: 1; min-width: 180px; }
+.dep-cuenta.al-dia { background: var(--verde-50); }
+.dep-cuenta.al-dia > svg.ic, .dep-cuenta.al-dia b { color: var(--verde); }
+.dep-cuenta .btn-link { font-size: .84rem; font-weight: 600; }
+
+/* Foto del comprobante */
+.dep-foto { display: flex; flex-direction: column; gap: 8px; }
+.dep-foto-caja { display: flex; gap: 10px; flex-wrap: wrap; }
+.dep-foto-caja .btn { cursor: pointer; flex-direction: row; color: var(--tinta); }
+.dep-foto-caja.lleno { align-items: center; padding: 8px; border: 1px solid var(--linea); border-radius: 12px; font-size: .88rem; }
+.dep-foto-caja.lleno img { width: 46px; height: 56px; object-fit: cover; border-radius: 6px; border: 1px solid var(--linea); }
+.dep-foto-caja.lleno span { flex: 1; }
+
 /* ---------- Configuración ---------- */
 .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-bottom: 18px; }
 .form-vertical { display: flex; flex-direction: column; gap: 14px; }
@@ -680,7 +758,11 @@ section[data-vista="personas"] .fila-form { grid-template-columns: minmax(200px,
   .dos-columnas, .dos-columnas.invertido { grid-template-columns: 1fr; }
   .dos-columnas.invertido .col-imagen { order: -1; }
   .stats { grid-template-columns: 1fr; }
+  .stats.cuatro { grid-template-columns: repeat(2, 1fr); }
+  .stats.cuatro .stat { flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; }
   .registro { padding: 20px 16px; }
+  .modal { padding: 20px 16px; }
+  .segmentado span { font-size: .78rem; padding: 8px 2px; }
 }
 @media (max-width: 520px) {
   .resumen-sub { grid-template-columns: 1fr; }
@@ -697,7 +779,7 @@ section[data-vista="personas"] .fila-form { grid-template-columns: minmax(200px,
   @page { margin: 14mm; }
   body { background: #fff; font-size: 12px; }
   .app { display: block; }
-  .lateral, .encabezado-controles, .toast, .tooltip { display: none !important; }
+  .lateral, .encabezado-controles, .toast, .tooltip, .modal { display: none !important; }
   .principal { padding: 0; max-width: none; }
   .panel { box-shadow: none; break-inside: avoid; }
   .solo-impresion { display: inline; }

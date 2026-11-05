@@ -54,6 +54,19 @@ router.get('/', async (req, res) => {
   res.json(gastos.map(({ texto_ocr, ...g }) => g));
 });
 
+// Memoria de comercios: los lugares donde ya se compró, del más usado al menos usado (para autocompletar).
+// Se respeta cómo se escribió la última vez.
+router.get('/comercios', async (req, res) => {
+  const propio = esAdmin(req) ? '' : ' AND usuario_id = ?';
+  const filas = await todos(`
+    SELECT comercio, COUNT(*) AS veces, MAX(id) AS ultimo FROM gastos
+    WHERE estado != 'anulado'${propio}
+    GROUP BY comercio COLLATE NOCASE ORDER BY veces DESC, ultimo DESC LIMIT 200
+  `, esAdmin(req) ? [] : [req.usuario.id]);
+  // En SQLite, con MAX() en el SELECT, "comercio" sale de la fila más reciente del grupo: la última forma escrita
+  res.json(filas.map((f) => f.comercio));
+});
+
 router.get('/:id', async (req, res) => {
   const gasto = await buscarGasto(v.id(req.params.id, 'id'));
   if (!gasto || (!esAdmin(req) && gasto.usuario_id !== req.usuario.id)) {

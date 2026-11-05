@@ -71,8 +71,19 @@ En el plan gratis, Render duerme el servidor tras 15 minutos sin uso; la primera
 La app la usa **una sola cuenta** (la dueña de la tarjeta). Las **personas** (Mamá, Rubén…) son a quienes se les presta la tarjeta: cada gasto se le carga a una persona y ella lo va pagando con **depósitos**.
 
 ```
-Te debe = gastos confirmados de la persona − depósitos que ha hecho
+Te debe = gastos confirmados de la persona − depósitos no anulados
 ```
+
+Si deposita de más, la diferencia queda como **saldo a su favor** y compensa sus compras siguientes.
+
+## Depósitos y abonos
+
+Pantalla **Depósitos** (menú lateral): el dinero que cada persona te entrega para pagar sus compras. No es el pago que tú haces al banco.
+
+- Cada depósito pertenece a una persona y cuenta para el **mes de su fecha**.
+- Se guarda el método (efectivo, transferencia o depósito bancario), la referencia, la foto del comprobante y una nota (todo opcional salvo persona, fecha e importe).
+- Un depósito equivocado no se borra: se **anula**. Deja de contar en el saldo y queda tachado en el historial.
+- Al registrar un gasto, el campo Comercio sugiere los lugares ya usados y muestra los más frecuentes.
 
 Si se olvida la contraseña: `npm run clave -- NuevaContraseña` desde la carpeta del proyecto.
 

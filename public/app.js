@@ -69,6 +69,7 @@ const ICONOS = {
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
   guardar: '<path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2"/><path d="M8 3v5h7V3M8 21v-7h8v7"/>',
   escudo: '<path d="M12 3 4 6v6c0 4.5 3.4 8.2 8 9 4.6-.8 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+  billetera: '<path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/><path d="M21 9h-5a3 3 0 0 0 0 6h5z"/><path d="M16 12h.01"/>',
   repetir: '<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/>',
 };
 const ic = (nombre) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[nombre] || ''}</svg>`;
@@ -108,7 +109,7 @@ const datosGuardados = {
 };
 const SIN_RESPUESTA = Symbol('sin respuesta');
 // Vistas que se pueden volver a pintar solas (no las que tienen un formulario a medio llenar)
-const VISTAS_REFRESCABLES = ['inicio', 'gastos', 'gasto', 'personas', 'persona', 'reportes'];
+const VISTAS_REFRESCABLES = ['inicio', 'gastos', 'gasto', 'depositos', 'personas', 'persona', 'reportes'];
 let refrescoProgramado = null;
 function refrescarVistaCuandoLleguen() {
   clearTimeout(refrescoProgramado);
@@ -394,6 +395,7 @@ const vistas = {
   registrar: abrirRegistro,
   gastos: cargarGastos,
   gasto: cargarDetalle,
+  depositos: cargarDepositos,
   personas: cargarPersonas,
   persona: cargarPersona,
   reportes: cargarReportes,
@@ -415,7 +417,7 @@ function navegar() {
 }
 window.addEventListener('hashchange', navegar);
 
-// Selector de mes compartido por Inicio, Mis gastos, Personas y Reportes
+// Selector de mes compartido por Mis gastos, Depósitos y Reportes
 function llenarSelectoresMes() {
   const meses = [];
   const d = new Date();
@@ -516,12 +518,28 @@ function reiniciarRegistro() {
 
 async function abrirRegistro() {
   reiniciarRegistro();
+  cargarComercios().catch(() => {}); // si falla, el campo funciona igual sin sugerencias
   await cargarBase();
   pintarPersonasElegibles();
   if (!estado.tarjeta || estado.tarjeta.estado !== 'activa') {
     $('#confirmar-error').textContent = estado.tarjeta ? 'La tarjeta está bloqueada.' : 'Primero hay que configurar la tarjeta en Configuración.';
   }
 }
+
+// Memoria de comercios: al escribir se sugieren los lugares ya usados, y los más frecuentes quedan a un toque
+async function cargarComercios() {
+  const comercios = await api('/api/gastos/comercios');
+  $('#lista-comercios').innerHTML = comercios.map((c) => `<option value="${esc(c)}"></option>`).join('');
+  $('#comercios-frecuentes').innerHTML = comercios.slice(0, 6)
+    .map((c) => `<button type="button" class="chip chip-chico" data-comercio="${esc(c)}">${esc(c)}</button>`).join('');
+}
+$('#comercios-frecuentes').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-comercio]');
+  if (!chip) return;
+  const campo = $('#form-gasto').comercio;
+  campo.value = chip.dataset.comercio;
+  $('#form-gasto').monto.focus();
+});
 
 function errorImagen(archivo) {
   if (!archivo.type.startsWith('image/')) return 'Ese archivo no es una imagen.';
@@ -777,7 +795,29 @@ $('#form-persona').addEventListener('submit', async (e) => {
   }, form.querySelector('[type=submit]'));
 });
 
-// ---------- Cuenta de una persona: depósitos y movimientos ----------
+// ---------- Cifras que cambian contando (como en una app del banco) ----------
+// Cada cifra recuerda el último valor que mostró y, al actualizarse, cuenta desde ese valor hasta el nuevo
+function contar(el, valor, formato = dinero) {
+  const desde = Number(el.dataset.valor ?? valor);
+  el.dataset.valor = valor;
+  if (sinMovimiento() || desde === valor) { el.textContent = formato(valor); return; }
+  const duracion = 700;
+  let t0 = null;
+  const paso = (t) => {
+    t0 ??= t;
+    const avance = Math.min(1, (t - t0) / duracion);
+    const actual = desde + (valor - desde) * (1 - (1 - avance) ** 3);
+    el.textContent = formato(formato === dinero ? actual : Math.round(actual));
+    if (avance < 1) requestAnimationFrame(paso);
+  };
+  requestAnimationFrame(paso);
+}
+
+const METODOS = { efectivo: 'Efectivo', transferencia: 'Transferencia', deposito: 'Depósito bancario' };
+const urlComprobante = (id) => `${API_BASE}/api/depositos/${id}/comprobante?t=${encodeURIComponent(sesionGuardada.leer() || '')}`;
+const textoSaldo = (saldo) => (saldo > 0 ? 'Te debe' : saldo < 0 ? 'Saldo a su favor' : 'Está al día');
+
+// ---------- Cuenta de una persona: compras, depósitos y saldo ----------
 let personaActual = null;
 
 async function cargarPersona(id) {
@@ -786,54 +826,40 @@ async function cargarPersona(id) {
     api(`/api/personas/${encodeURIComponent(id)}/movimientos`),
   ]);
   await cargarBase();
+  // Al cambiar de persona las cifras no cuentan desde las de la anterior
+  if (personaActual?.id !== persona.id) $$('#persona-gastado, #persona-pagado, #persona-saldo').forEach((el) => delete el.dataset.valor);
   personaActual = persona;
   $('#persona-nombre').textContent = persona.nombre;
-  $('#persona-gastado').textContent = dinero(persona.gastado);
-  $('#persona-pagado').textContent = dinero(persona.pagado);
+  contar($('#persona-gastado'), persona.gastado);
+  contar($('#persona-pagado'), persona.pagado);
   $('#persona-ultimo-pago').textContent = persona.ultimo_pago ? `Último depósito: ${fechaCorta(persona.ultimo_pago)}` : 'Aún no ha depositado';
-  $('#persona-saldo-etiqueta').textContent = persona.saldo > 0 ? 'Te debe' : persona.saldo < 0 ? 'Saldo a su favor' : 'Está al día';
-  $('#persona-saldo').textContent = dinero(Math.abs(persona.saldo));
-  $('#btn-saldar').hidden = !(persona.saldo > 0);
+  $('#persona-saldo-etiqueta').textContent = textoSaldo(persona.saldo);
+  contar($('#persona-saldo'), Math.abs(persona.saldo));
+  $('#btn-saldar').hidden = !(persona.saldo > 0 && esAdmin());
   $('#btn-activar-persona').innerHTML = persona.activo ? `${ic('ban')} Desactivar` : `${ic('check')} Activar`;
 
-  const form = $('#form-pago');
-  form.reset();
-  form.fecha.value = hoy();
-  $('#pago-error').textContent = '';
-
-  $('#persona-movimientos').innerHTML = movimientos.length ? movimientos.map((m) => `
-    <li>
-      <span class="mov-icono ${m.tipo}">${ic(m.tipo === 'gasto' ? 'receipt' : 'check')}</span>
+  $('#persona-movimientos').innerHTML = movimientos.length ? movimientos.map((m) => {
+    const esGasto = m.tipo === 'gasto';
+    const detalle = [fechaCorta(m.fecha), !esGasto && METODOS[m.metodo], m.referencia && `ref. ${esc(m.referencia)}`, m.nota && esc(m.nota)]
+      .filter(Boolean).join(' · ');
+    const accion = esGasto
+      ? `<a class="btn-icono" href="#gasto/${m.id}" title="Ver gasto" aria-label="Ver gasto">${ic('eye')}</a>`
+      : m.anulado || !esAdmin() ? '<span></span>'
+        : `<button class="btn-icono" data-anular-deposito="${m.id}" title="Anular depósito" aria-label="Anular depósito">${ic('ban')}</button>`;
+    return `
+    <li class="${m.anulado ? 'anulado' : ''}">
+      <span class="mov-icono ${m.tipo}">${ic(esGasto ? 'receipt' : 'billetera')}</span>
       <span class="mov-texto">
-        <strong>${m.tipo === 'gasto' ? esc(m.descripcion) : esc(m.descripcion)}</strong>
-        <small>${fechaCorta(m.fecha)}${m.nota ? ` · ${esc(m.nota)}` : ''}</small>
+        <strong>${esc(m.descripcion)}${m.anulado ? ' <span class="pastilla estado-mal">Anulado</span>' : ''}</strong>
+        <small>${detalle}</small>
       </span>
-      <span class="mov-monto ${m.tipo}">${m.tipo === 'gasto' ? '+' : '−'} ${dinero(m.monto)}</span>
-      ${m.tipo === 'gasto'
-        ? `<a class="btn-icono" href="#gasto/${m.id}" title="Ver gasto" aria-label="Ver gasto">${ic('eye')}</a>`
-        : `<button class="btn-icono" data-borrar-pago="${m.id}" title="Borrar depósito" aria-label="Borrar depósito">${ic('x')}</button>`}
-    </li>`).join('')
+      <span class="mov-monto ${m.tipo}">${esGasto ? '+' : '−'} ${dinero(m.monto)}
+        ${m.tiene_comprobante ? `<button type="button" class="btn-link mov-comprobante" data-zoom="${urlComprobante(m.id)}">Ver comprobante</button>` : ''}</span>
+      ${accion}
+    </li>`;
+  }).join('')
     : '<li class="vacio">Todavía no hay compras ni depósitos de esta persona.</li>';
 }
-
-$('#form-pago').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const d = datosForm(form);
-  if (!(Number(d.monto) > 0)) {
-    $('#pago-error').textContent = 'Escribe el monto que te depositó';
-    return;
-  }
-  if (personaActual && Number(d.monto) > personaActual.saldo + 0.001
-    && !confirm(`El depósito (${dinero(d.monto)}) es mayor a lo que te debe (${dinero(Math.max(0, personaActual.saldo))}). La diferencia quedará como saldo a su favor. ¿Guardarlo igual?`)) {
-    return;
-  }
-  await conError($('#pago-error'), async () => {
-    await api(`/api/personas/${personaActual.id}/pagos`, { method: 'POST', body: d });
-    toast('Depósito registrado');
-    await cargarPersona(personaActual.id);
-  }, form.querySelector('[type=submit]'));
-});
 
 // Saldar: registra un depósito por todo lo que debe, con fecha de hoy, y la persona queda al día
 $('#btn-saldar').addEventListener('click', async (e) => {
@@ -841,7 +867,7 @@ $('#btn-saldar').addEventListener('click', async (e) => {
   if (!p || !(p.saldo > 0)) return;
   if (!confirm(`¿Saldar la cuenta de ${p.nombre}? Se registrará un depósito de ${dinero(p.saldo)} con fecha de hoy y quedará al día.`)) return;
   await conError(null, async () => {
-    await api(`/api/personas/${p.id}/pagos`, { method: 'POST', body: { monto: p.saldo, fecha: hoy(), nota: 'Cuenta saldada' } });
+    await api('/api/depositos', { method: 'POST', body: { persona_id: p.id, monto: p.saldo, fecha: hoy(), nota: 'Cuenta saldada' } });
     toast(`Cuenta de ${p.nombre} saldada`);
     await cargarPersona(p.id);
     const tarjeta = $('.stat.destacado');
@@ -852,14 +878,209 @@ $('#btn-saldar').addEventListener('click', async (e) => {
   }, e.currentTarget);
 });
 
+// Un depósito equivocado no se borra: se anula, deja de contar y queda tachado en el historial
+async function anularDeposito(id) {
+  if (!confirm('¿Anular este depósito? Dejará de contar en el saldo (se volverá a sumar a lo que debe), pero quedará en el historial como anulado.')) return false;
+  await api(`/api/depositos/${id}/anular`, { method: 'PATCH' });
+  toast('Depósito anulado');
+  return true;
+}
+
 $('#persona-movimientos').addEventListener('click', async (e) => {
-  const boton = e.target.closest('[data-borrar-pago]');
-  if (!boton || !confirm('¿Borrar este depósito? Se volverá a sumar a lo que te debe.')) return;
-  await conError(null, async () => {
-    await api(`/api/personas/${personaActual.id}/pagos/${boton.dataset.borrarPago}`, { method: 'DELETE' });
-    toast('Depósito borrado');
-    await cargarPersona(personaActual.id);
-  });
+  const boton = e.target.closest('[data-anular-deposito]');
+  if (!boton) return;
+  await conError(null, async () => { if (await anularDeposito(boton.dataset.anularDeposito)) await cargarPersona(personaActual.id); });
+});
+
+// ---------- Depósitos y abonos ----------
+let filtroDepositos = '';
+
+async function cargarDepositos() {
+  await cargarBase();
+  const chips = [{ id: '', nombre: 'Todas' }, ...estado.personas.filter((p) => p.activo)];
+  if (!chips.some((c) => String(c.id) === filtroDepositos)) filtroDepositos = '';
+  $('#chips-depositos').innerHTML = chips.map((c) => `
+    <button class="chip ${String(c.id) === filtroDepositos ? 'activo' : ''}" data-persona="${c.id}">
+      ${c.id ? `<span class="punto" style="background:${colorPersona(c.id)}"></span>` : ''}${esc(c.nombre)}
+    </button>`).join('');
+  await cargarTablaDepositos();
+}
+
+async function cargarTablaDepositos() {
+  const params = new URLSearchParams({ mes: estado.mes });
+  if (filtroDepositos) params.set('persona_id', filtroDepositos);
+  const { resumen, depositos } = await api(`/api/depositos?${params}`);
+  contar($('#dep-total'), resumen.total_recibido);
+  contar($('#dep-cantidad'), resumen.cantidad, String);
+  contar($('#dep-personas'), resumen.personas_que_abonaron, String);
+  contar($('#dep-pendiente'), resumen.pendiente);
+  $('#dep-pendiente-nota').textContent = resumen.a_favor > 0
+    ? `a la fecha · ${dinero(resumen.a_favor)} a favor` : 'a la fecha, entre todas';
+
+  const columnas = esAdmin() ? 7 : 6;
+  $('#tabla-depositos').innerHTML = depositos.length ? depositos.map((d) => `
+    <tr class="${d.anulado ? 'anulado' : ''}">
+      <td>${fechaCorta(d.fecha)}</td>
+      <td><a href="#persona/${d.persona_id}" class="enlace-limpio">${pastillaPersona(d.persona_id, d.persona)}</a>
+        ${d.anulado ? '<span class="pastilla estado-mal">Anulado</span>' : ''}</td>
+      <td>${d.metodo ? `<span class="pastilla metodo-${d.metodo}">${METODOS[d.metodo]}</span>` : '<small>—</small>'}</td>
+      <td>${d.referencia ? esc(d.referencia) : '<small>—</small>'}</td>
+      <td>${d.tiene_comprobante ? `<img class="miniatura" src="${urlComprobante(d.id)}" alt="Comprobante" loading="lazy" data-zoom="${urlComprobante(d.id)}">` : '<small>—</small>'}</td>
+      <td class="num importe-deposito">+${dinero(d.monto)}</td>
+      ${esAdmin() ? `<td><div class="acciones-celda">${d.anulado ? ''
+        : `<button class="btn-icono" data-anular-deposito="${d.id}" title="Anular depósito" aria-label="Anular depósito">${ic('ban')}</button>`}</div></td>` : ''}
+    </tr>`).join('')
+    : `<tr><td colspan="${columnas}" class="vacio">No hay depósitos en ${nombreMes(estado.mes)}${filtroDepositos ? ' de esta persona' : ''}</td></tr>`;
+}
+
+$('#chips-depositos').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-persona]');
+  if (!chip) return;
+  filtroDepositos = chip.dataset.persona;
+  $$('#chips-depositos .chip').forEach((c) => c.classList.toggle('activo', c === chip));
+  conError(null, cargarTablaDepositos);
+});
+
+$('#tabla-depositos').addEventListener('click', async (e) => {
+  const boton = e.target.closest('[data-anular-deposito]');
+  if (!boton) return;
+  await conError(null, async () => { if (await anularDeposito(boton.dataset.anularDeposito)) await cargarTablaDepositos(); });
+});
+
+// ---------- Modal: registrar depósito ----------
+const modalDeposito = $('#modal-deposito');
+const formDeposito = $('#form-deposito');
+const fotoDeposito = { archivo: null, url: null };
+
+function quitarFotoDeposito() {
+  if (fotoDeposito.url) URL.revokeObjectURL(fotoDeposito.url);
+  Object.assign(fotoDeposito, { archivo: null, url: null });
+  $('#dep-archivo').value = '';
+  $('#dep-camara').value = '';
+  $('#dep-foto-vacia').hidden = false;
+  $('#dep-foto-llena').hidden = true;
+}
+
+async function adjuntarFotoDeposito(archivo) {
+  if (!archivo) return;
+  const error = errorImagen(archivo);
+  $('#deposito-error').textContent = error;
+  if (error) return;
+  const foto = await comprimirImagen(archivo);
+  quitarFotoDeposito();
+  Object.assign(fotoDeposito, { archivo: foto, url: URL.createObjectURL(foto) });
+  $('#dep-foto-img').src = fotoDeposito.url;
+  $('#dep-foto-vacia').hidden = true;
+  $('#dep-foto-llena').hidden = false;
+}
+$('#dep-archivo').addEventListener('change', (e) => adjuntarFotoDeposito(e.target.files[0]));
+$('#dep-camara').addEventListener('change', (e) => adjuntarFotoDeposito(e.target.files[0]));
+$('#dep-quitar-foto').addEventListener('click', quitarFotoDeposito);
+
+function pintarPersonasDeposito() {
+  const elegida = $('#dep-persona').value;
+  const lista = estado.personas.filter((p) => p.activo || String(p.id) === elegida);
+  $('#dep-elegir-persona').innerHTML = lista.map((p) => `
+    <button type="button" class="persona-opcion" role="radio" aria-checked="${String(p.id) === elegida}" data-persona="${p.id}">
+      ${avatarPersona(p.id)}<span class="nombre-op">${esc(p.nombre)}</span>
+    </button>`).join('') || '<p class="vacio">Primero agrega personas en <a href="#personas">Personas</a>.</p>';
+}
+
+// Muestra en vivo cómo queda la cuenta: lo que debe ahora y lo que deberá (o el saldo a su favor) con este depósito
+function pintarCuentaDeposito() {
+  const caja = $('#dep-cuenta');
+  const persona = estado.personas.find((p) => String(p.id) === $('#dep-persona').value);
+  if (!persona) { caja.hidden = true; return; }
+  const monto = Math.max(0, Number(formDeposito.monto.value) || 0);
+  const despues = Math.round((persona.saldo - monto) * 100) / 100;
+  const ahora = persona.saldo > 0 ? `Debe <b>${dinero(persona.saldo)}</b>`
+    : persona.saldo < 0 ? `Tiene <b>${dinero(-persona.saldo)}</b> a su favor` : 'Está <b>al día</b>';
+  const luego = !monto ? '' : despues > 0 ? `quedará debiendo <b>${dinero(despues)}</b>`
+    : despues < 0 ? `quedará <b>${dinero(-despues)}</b> a su favor` : 'quedará <b>al día</b>';
+  caja.className = `dep-cuenta ${monto && despues <= 0 ? 'al-dia' : ''}`;
+  caja.innerHTML = `${ic(monto && despues <= 0 ? 'check' : 'info')}<span>${ahora}${luego ? ` · con este depósito ${luego}` : ''}</span>`
+    + (persona.saldo > 0 && monto !== persona.saldo
+      ? `<button type="button" class="btn-link" data-todo="${persona.saldo}">Depositar todo</button>` : '');
+  caja.hidden = false;
+}
+
+async function abrirModalDeposito(personaId) {
+  if (!esAdmin()) return;
+  formDeposito.reset();
+  formDeposito.fecha.value = hoy();
+  $('#dep-persona').value = personaId ? String(personaId) : '';
+  $('#deposito-error').textContent = '';
+  quitarFotoDeposito();
+  pintarPersonasDeposito();
+  pintarCuentaDeposito();
+  modalDeposito.showModal();
+  (personaId ? formDeposito.monto : modalDeposito.querySelector('[data-persona]') || formDeposito.monto).focus();
+  // Saldos al día (puede haber cambiado algo desde que se cargó la pantalla)
+  await cargarBase().catch(() => {});
+  pintarPersonasDeposito();
+  pintarCuentaDeposito();
+}
+
+function cerrarModal(modal) {
+  if (!modal.open || modal.classList.contains('cerrando')) return;
+  if (sinMovimiento()) { modal.close(); return; }
+  modal.classList.add('cerrando');
+  setTimeout(() => { modal.classList.remove('cerrando'); modal.close(); }, 180);
+}
+
+document.addEventListener('click', (e) => {
+  const boton = e.target.closest('[data-registrar-deposito]');
+  if (boton) abrirModalDeposito(boton.closest('[data-vista="persona"]') ? personaActual?.id : Number(filtroDepositos) || null);
+});
+modalDeposito.addEventListener('click', (e) => {
+  if (e.target === modalDeposito || e.target.closest('[data-cerrar-modal]')) cerrarModal(modalDeposito);
+});
+modalDeposito.addEventListener('cancel', (e) => { e.preventDefault(); cerrarModal(modalDeposito); });
+
+$('#dep-elegir-persona').addEventListener('click', (e) => {
+  const opcion = e.target.closest('[data-persona]');
+  if (!opcion) return;
+  $('#dep-persona').value = opcion.dataset.persona;
+  $$('#dep-elegir-persona [data-persona]').forEach((b) => b.setAttribute('aria-checked', String(b === opcion)));
+  $('#deposito-error').textContent = '';
+  pintarCuentaDeposito();
+  formDeposito.monto.focus();
+});
+formDeposito.monto.addEventListener('input', pintarCuentaDeposito);
+$('#dep-cuenta').addEventListener('click', (e) => {
+  const boton = e.target.closest('[data-todo]');
+  if (!boton) return;
+  formDeposito.monto.value = Number(boton.dataset.todo).toFixed(2);
+  pintarCuentaDeposito();
+});
+
+formDeposito.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const d = datosForm(formDeposito);
+  const error = !d.persona_id ? 'Elige quién te depositó'
+    : !(Number(d.monto) > 0) ? 'Escribe el importe del depósito'
+      : !d.fecha ? 'Indica la fecha del depósito' : '';
+  $('#deposito-error').textContent = error;
+  if (error) return;
+  const boton = formDeposito.querySelector('[type=submit]');
+  await conError($('#deposito-error'), async () => {
+    let archivo = null;
+    if (fotoDeposito.archivo) {
+      $('span', boton).textContent = 'Subiendo foto…';
+      const fd = new FormData();
+      fd.append('imagen', fotoDeposito.archivo);
+      ({ archivo } = await api('/api/facturas', { method: 'POST', body: fd }));
+    }
+    $('span', boton).textContent = 'Guardando…';
+    const { persona } = await api('/api/depositos', { method: 'POST', body: { ...d, persona_id: Number(d.persona_id), monto: Number(d.monto), archivo } });
+    cerrarModal(modalDeposito);
+    navigator.vibrate?.(35);
+    toast(persona.saldo > 0 ? `Depósito registrado · ${persona.nombre} debe ${dinero(persona.saldo)}`
+      : persona.saldo < 0 ? `Depósito registrado · ${persona.nombre} tiene ${dinero(-persona.saldo)} a su favor`
+        : `Depósito registrado · ${persona.nombre} está al día`);
+    navegar(); // la pantalla abierta se actualiza y sus cifras cuentan hasta el nuevo valor
+  }, boton);
+  $('span', boton).textContent = 'Guardar depósito';
 });
 
 $('#btn-renombrar-persona').addEventListener('click', async () => {

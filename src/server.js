@@ -9,6 +9,7 @@ import tarjetasRoutes from './routes/tarjetas.js';
 import gastosRoutes from './routes/gastos.js';
 import facturasRoutes from './routes/facturas.js';
 import reportesRoutes from './routes/reportes.js';
+import depositosRoutes from './routes/depositos.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +46,7 @@ app.use('/api/tarjetas', requireAuth, tarjetasRoutes);
 app.use('/api/gastos', requireAuth, gastosRoutes);
 app.use('/api/facturas', requireAuth, facturasRoutes);
 app.use('/api/reportes', requireAuth, reportesRoutes);
+app.use('/api/depositos', requireAuth, depositosRoutes);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
 
 app.use(express.static(path.resolve('public')));

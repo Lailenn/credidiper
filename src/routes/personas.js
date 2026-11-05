@@ -1,31 +1,16 @@
 import { Router } from 'express';
-import { todos, uno, ejecutar, redondear, ahoraLocal } from '../db.js';
+import { todos, uno, ejecutar, SQL_PERSONAS, conSaldo, cuentaPersona } from '../db.js';
 import { requireRol } from '../auth.js';
+import { crearDeposito, anularDeposito } from './depositos.js';
 import * as v from '../validar.js';
 
 const router = Router();
 
-// Cada persona con su cuenta: lo que gastó con la tarjeta (gastos confirmados), lo que ha depositado y lo que debe
-const SELECT_PERSONAS = `
-  SELECT p.*,
-    COALESCE((SELECT SUM(monto) FROM gastos WHERE persona_id = p.id AND estado = 'confirmado'), 0) AS gastado,
-    COALESCE((SELECT SUM(monto) FROM pagos WHERE persona_id = p.id), 0) AS pagado,
-    (SELECT MAX(fecha) FROM pagos WHERE persona_id = p.id) AS ultimo_pago
-  FROM personas p
-`;
-const conSaldo = (p) => ({
-  ...p,
-  gastado: redondear(p.gastado),
-  pagado: redondear(p.pagado),
-  saldo: redondear(p.gastado - p.pagado),
-});
-const buscarPersona = async (id) => {
-  const p = await uno(`${SELECT_PERSONAS} WHERE p.id = ?`, [id]);
-  return p && conSaldo(p);
-};
+// La cuenta de cada persona (gastado, depositado y saldo) se calcula en db.js, la misma para todas las pantallas
+const buscarPersona = cuentaPersona;
 
 router.get('/', async (req, res) => {
-  res.json((await todos(`${SELECT_PERSONAS} ORDER BY p.activo DESC, p.nombre`)).map(conSaldo));
+  res.json((await todos(`${SQL_PERSONAS} ORDER BY p.activo DESC, p.nombre`)).map(conSaldo));
 });
 
 router.get('/:id', async (req, res) => {
@@ -34,17 +19,20 @@ router.get('/:id', async (req, res) => {
   res.json(persona);
 });
 
-// Movimientos de una persona: sus compras (aumentan lo que debe) y sus depósitos (lo reducen), del más reciente al más antiguo
+// Movimientos de una persona: sus compras (aumentan lo que debe) y sus depósitos (lo reducen), del más reciente al más antiguo.
+// Los depósitos anulados se incluyen marcados: no cuentan en el saldo, pero quedan en el historial.
 router.get('/:id/movimientos', async (req, res) => {
   const personaId = v.id(req.params.id, 'id');
   if (!(await uno('SELECT 1 FROM personas WHERE id = ?', [personaId]))) {
     return res.status(404).json({ error: 'Persona no encontrada' });
   }
   const movimientos = await todos(`
-    SELECT 'gasto' AS tipo, id, fecha_compra AS fecha, comercio AS descripcion, monto, nota, creado_en
+    SELECT 'gasto' AS tipo, id, fecha_compra AS fecha, comercio AS descripcion, monto, nota, creado_en,
+           NULL AS metodo, NULL AS referencia, 0 AS tiene_comprobante, 0 AS anulado
     FROM gastos WHERE persona_id = ? AND estado = 'confirmado'
     UNION ALL
-    SELECT 'pago' AS tipo, id, fecha, COALESCE('Depósito · ref. ' || referencia, 'Depósito') AS descripcion, monto, nota, creado_en
+    SELECT 'pago' AS tipo, id, fecha, 'Depósito' AS descripcion, monto, nota, creado_en,
+           metodo, referencia, comprobante IS NOT NULL AS tiene_comprobante, anulado
     FROM pagos WHERE persona_id = ?
     ORDER BY fecha DESC, creado_en DESC
   `, [personaId, personaId]);
@@ -73,30 +61,16 @@ router.patch('/:id', requireRol('admin'), async (req, res) => {
   res.json(await buscarPersona(personaId));
 });
 
-// Registrar un depósito de la persona
+// Rutas anteriores de depósitos: la pantalla ahora usa /api/depositos. Se conservan para que la
+// versión publicada siga funcionando mientras se actualiza. Borrar ya no elimina: anula el depósito.
 router.post('/:id/pagos', requireRol('admin'), async (req, res) => {
-  const personaId = v.id(req.params.id, 'id');
-  if (!(await uno('SELECT 1 FROM personas WHERE id = ?', [personaId]))) {
-    return res.status(404).json({ error: 'Persona no encontrada' });
-  }
-  const monto = v.dinero(req.body.monto, 'monto', { minExclusivo: true });
-  const fecha = v.fecha(req.body.fecha, 'fecha');
-  const opcional = (valor, campo, max) => (typeof valor === 'string' && valor.trim() ? v.texto(valor, campo, { max }) : null);
-  const referencia = opcional(req.body.referencia, 'referencia', 60);
-  const nota = opcional(req.body.nota, 'nota', 300);
-  const { id } = await ejecutar(
-    'INSERT INTO pagos (persona_id, monto, fecha, referencia, nota, creado_en) VALUES (?, ?, ?, ?, ?, ?)',
-    [personaId, monto, fecha, referencia, nota, ahoraLocal()],
-  );
-  res.status(201).json({ id, persona: await buscarPersona(personaId) });
+  const { deposito, persona } = await crearDeposito(v.id(req.params.id, 'id'), req.body);
+  res.status(201).json({ id: deposito.id, deposito, persona });
 });
 
-// Borrar un depósito registrado por error
 router.delete('/:id/pagos/:pagoId', requireRol('admin'), async (req, res) => {
-  const personaId = v.id(req.params.id, 'id');
-  const { cambios } = await ejecutar('DELETE FROM pagos WHERE id = ? AND persona_id = ?', [v.id(req.params.pagoId, 'depósito'), personaId]);
-  if (!cambios) return res.status(404).json({ error: 'Depósito no encontrado' });
-  res.json({ persona: await buscarPersona(personaId) });
+  const { persona } = await anularDeposito(v.id(req.params.pagoId, 'depósito'), v.id(req.params.id, 'id'));
+  res.json({ persona });
 });
 
 export default router;

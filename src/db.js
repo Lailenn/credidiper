@@ -102,15 +102,21 @@ export async function iniciarBase() {
       fecha_subida TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Depósitos que cada persona hace para pagar lo que gastó con la tarjeta
+    -- Depósitos que cada persona hace para pagar lo que gastó con la tarjeta.
+    -- Cuentan para el mes de su fecha. No se borran: un depósito equivocado se anula y queda en el historial.
     CREATE TABLE IF NOT EXISTS pagos (
-      id         INTEGER PRIMARY KEY,
-      persona_id INTEGER NOT NULL REFERENCES personas(id),
-      monto      REAL NOT NULL CHECK (monto > 0),
-      fecha      TEXT NOT NULL,
-      referencia TEXT,
-      nota       TEXT,
-      creado_en  TEXT
+      id               INTEGER PRIMARY KEY,
+      persona_id       INTEGER NOT NULL REFERENCES personas(id),
+      monto            REAL NOT NULL CHECK (monto > 0),
+      fecha            TEXT NOT NULL,
+      metodo           TEXT CHECK (metodo IN ('efectivo', 'transferencia', 'deposito')),
+      referencia       TEXT,
+      nota             TEXT,
+      comprobante      BLOB,
+      comprobante_tipo TEXT,
+      anulado          INTEGER NOT NULL DEFAULT 0 CHECK (anulado IN (0, 1)),
+      anulado_en       TEXT,
+      creado_en        TEXT
     );
 
     -- Imágenes subidas en el paso 1 que todavía no se han guardado como gasto
@@ -138,6 +144,8 @@ export async function iniciarBase() {
     gastos: [['persona_id', 'INTEGER REFERENCES personas(id)'], ['nota', 'TEXT'], ['creado_en', 'TEXT']],
     facturas: [['imagen', 'BLOB'], ['tipo', 'TEXT']],
     tarjetas: [['ultimos4', 'TEXT'], ['titular', 'TEXT'], ['vencimiento', 'TEXT']],
+    pagos: [['metodo', 'TEXT'], ['comprobante', 'BLOB'], ['comprobante_tipo', 'TEXT'],
+      ['anulado', 'INTEGER NOT NULL DEFAULT 0'], ['anulado_en', 'TEXT']],
   };
   for (const [tabla, lista] of Object.entries(faltantes)) {
     const existentes = await columnas(tabla);
@@ -152,6 +160,7 @@ export async function iniciarBase() {
     CREATE INDEX IF NOT EXISTS idx_gastos_fecha ON gastos (fecha_compra);
     CREATE INDEX IF NOT EXISTS idx_gastos_persona ON gastos (persona_id, estado);
     CREATE INDEX IF NOT EXISTS idx_pagos_persona ON pagos (persona_id);
+    CREATE INDEX IF NOT EXISTS idx_pagos_fecha ON pagos (fecha);
   `);
 
   // Limpieza (sesiones vencidas y subidas abandonadas de más de un día) y conteo de usuarios, en un solo viaje
@@ -183,6 +192,27 @@ export const redondear = (n) => Math.round(n * 100) / 100;
 const ZONA = process.env.ZONA_HORARIA || 'America/El_Salvador';
 export const ahoraLocal = () => new Date().toLocaleString('sv-SE', { timeZone: ZONA }); // "AAAA-MM-DD HH:MM:SS"
 export const mesActual = () => ahoraLocal().slice(0, 7);
+
+// Cuenta de cada persona: Saldo = gastos confirmados − depósitos no anulados.
+// Saldo negativo = saldo a su favor (pagó de más); se conserva para compensar compras futuras.
+// Todo se calcula a partir de los movimientos, nunca se guarda, para que nada se cuente dos veces.
+export const SQL_PERSONAS = `
+  SELECT p.*,
+    COALESCE((SELECT SUM(monto) FROM gastos WHERE persona_id = p.id AND estado = 'confirmado'), 0) AS gastado,
+    COALESCE((SELECT SUM(monto) FROM pagos WHERE persona_id = p.id AND anulado = 0), 0) AS pagado,
+    (SELECT MAX(fecha) FROM pagos WHERE persona_id = p.id AND anulado = 0) AS ultimo_pago
+  FROM personas p
+`;
+export const conSaldo = (p) => ({
+  ...p,
+  gastado: redondear(p.gastado),
+  pagado: redondear(p.pagado),
+  saldo: redondear(p.gastado - p.pagado),
+});
+export async function cuentaPersona(id) {
+  const p = await uno(`${SQL_PERSONAS} WHERE p.id = ?`, [id]);
+  return p && conSaldo(p);
+}
 
 // Expresión SQL del disponible de una tarjeta (alias t)
 export const SQL_DISPONIBLE = `
