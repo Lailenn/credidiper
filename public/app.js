@@ -89,7 +89,9 @@ const nombreMes = (mes) => {
   const texto = new Date(a, m - 1, 1).toLocaleDateString('es', { month: 'long', year: 'numeric' }).replace(' de ', ' ');
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 };
-const iniciales = (nombre) => nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+// Sin lo que va entre paréntesis y solo letras o números: "Amaraly (yo)" -> "A", no "A("
+const iniciales = (nombre) => nombre.replace(/\(.*?\)/g, ' ').split(/\s+/).map((p) => p.replace(/[^\p{L}\p{N}]/gu, ''))
+  .filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?';
 // Contenido de data-tip: el navegador lo decodifica al leerlo y luego se inserta como HTML, por eso se escapa dos veces
 const tip = (titulo, texto) => esc(`<b>${esc(titulo)}</b>${texto}`);
 const datosForm = (form) => Object.fromEntries(new FormData(form));
@@ -476,18 +478,29 @@ async function cargarInicio() {
       (esAdmin() ? '<a class="btn btn-primario" href="#configuracion">Configurar tarjeta</a>' : '<p>Pide a la persona administradora que la configure.</p>');
     return;
   }
-  pintarElegirTarjeta($('#inicio-tarjetas'), false, true);
-  $('#res-nombre').textContent = estado.tarjetas.length > 1 ? `Límite · ${t.nombre}` : 'Límite de la tarjeta';
-  const gastado = t.limite - t.disponible;
-  const usado = t.limite > 0 ? (gastado / t.limite) * 100 : 0;
-  $('#res-limite').textContent = dinero(t.limite);
-  $('#res-gastado').textContent = dinero(gastado);
-  $('#res-gastado-pct').textContent = `${pct(usado)} del límite`;
-  $('#res-disponible').textContent = dinero(t.disponible);
-  $('#res-disponible-pct').textContent = `${pct(100 - usado)} restante`;
-  $('#res-barra').style.width = `${Math.min(100, Math.max(0, usado))}%`;
-  $('#res-barra').parentElement.classList.toggle('alto', usado > 85);
-  $('#res-barra').parentElement.setAttribute('aria-valuenow', Math.round(usado));
+  // Cada tarjeta con su propio resumen y su propia barra de uso del límite (nunca se suman entre sí)
+  const varias = estado.tarjetas.length > 1;
+  $('#inicio-titulo').textContent = varias ? 'Resumen de tus tarjetas' : 'Resumen de la tarjeta';
+  $('#inicio-resumenes').innerHTML = estado.tarjetas.map((tj) => {
+    const gastado = tj.limite - tj.disponible;
+    const usado = tj.limite > 0 ? Math.min(100, Math.max(0, (gastado / tj.limite) * 100)) : 0;
+    return `
+    <div class="panel resumen${varias ? ' compacto' : ''}${tj.estado === 'bloqueada' ? ' bloqueada' : ''}">
+      <div class="resumen-top">
+        <div>
+          <p class="etiqueta resumen-nombre"><strong>${esc(tj.nombre)}</strong>${tj.ultimos4 ? ` · •••• ${esc(tj.ultimos4)}` : ''}${tj.estado === 'bloqueada' ? ' <span class="pastilla estado-mal">Bloqueada</span>' : ''}</p>
+          <p class="etiqueta">Límite de la tarjeta</p>
+          <p class="cifra-hero">${dinero(tj.limite)}</p>
+        </div>
+        <span class="mini-tarjeta grande ${tj.emisor === 'davivienda' ? 'dv' : ''}" aria-hidden="true"></span>
+      </div>
+      <div class="progreso${usado > 85 ? ' alto' : ''}" role="progressbar" aria-label="Uso del límite de ${esc(tj.nombre)}" aria-valuenow="${Math.round(usado)}"><div style="width:${usado}%"></div></div>
+      <div class="resumen-sub">
+        <div class="sub-caja"><p class="etiqueta">Total gastado</p><p class="cifra">${dinero(gastado)}</p><small>${pct(usado)} del límite</small></div>
+        <div class="sub-caja"><p class="etiqueta">Disponible</p><p class="cifra verde">${dinero(tj.disponible)}</p><small>${pct(100 - usado)} restante</small></div>
+      </div>
+    </div>`;
+  }).join('');
 
   pintarDeudas($('#inicio-personas'), $('#inicio-total-deben'));
 }
@@ -578,13 +591,7 @@ async function abrirRegistro() {
   }
 }
 
-// Elegir tarjeta: en Inicio cambia el resumen; al registrar, a qué tarjeta se carga el gasto
-$('#inicio-tarjetas').addEventListener('click', (e) => {
-  const boton = e.target.closest('[data-elegir-tarjeta]');
-  if (!boton) return;
-  elegirTarjeta(boton.dataset.elegirTarjeta);
-  conError(null, cargarInicio);
-});
+// Elegir tarjeta al registrar: a qué tarjeta se carga el gasto
 $('#elegir-tarjeta').addEventListener('click', (e) => {
   const boton = e.target.closest('[data-elegir-tarjeta]');
   if (!boton) return;

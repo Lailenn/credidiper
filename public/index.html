@@ -85,34 +85,13 @@
       <!-- ---------- Inicio ---------- -->
       <section data-vista="inicio">
         <header class="encabezado">
-          <h1>Resumen de la tarjeta</h1>
+          <h1 id="inicio-titulo">Resumen de la tarjeta</h1>
         </header>
         <div id="inicio-sin-tarjeta" class="panel vacio-grande" hidden></div>
         <div id="inicio-contenido">
-          <div class="elegir-tarjeta" id="inicio-tarjetas" role="radiogroup" aria-label="Tarjeta del resumen" hidden></div>
           <div class="inicio-grid">
-            <div class="panel resumen">
-              <div class="resumen-top">
-                <div>
-                  <p class="etiqueta" id="res-nombre">Límite de la tarjeta</p>
-                  <p class="cifra-hero" id="res-limite"></p>
-                </div>
-                <span class="icono-tarjeta"><i data-icon="card"></i></span>
-              </div>
-              <div class="progreso" role="progressbar" aria-label="Uso del límite"><div id="res-barra"></div></div>
-              <div class="resumen-sub">
-                <div class="sub-caja">
-                  <p class="etiqueta">Total gastado</p>
-                  <p class="cifra" id="res-gastado"></p>
-                  <small id="res-gastado-pct"></small>
-                </div>
-                <div class="sub-caja">
-                  <p class="etiqueta">Disponible</p>
-                  <p class="cifra verde" id="res-disponible"></p>
-                  <small id="res-disponible-pct"></small>
-                </div>
-              </div>
-            </div>
+            <!-- Un resumen (límite, barra, gastado y disponible) por cada tarjeta -->
+            <div class="resumenes" id="inicio-resumenes"></div>
             <div class="panel acciones-rapidas">
               <h2>Acciones rápidas</h2>
               <a href="#registrar" class="btn btn-primario"><i data-icon="plus"></i> Registrar nuevo gasto</a>

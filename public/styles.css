@@ -845,6 +845,22 @@ section[data-vista="configuracion"] .btn-primario { padding: 12px 26px; }
 .to-texto strong small { font-weight: 400; }
 .to-texto small { font-size: .74rem; }
 .to-texto small b { color: var(--verde); font-weight: 650; }
+/* Inicio: un resumen por tarjeta, uno debajo del otro */
+.resumenes { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.inicio-grid { align-items: start; }
+.resumen-nombre { color: var(--tinta); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.resumen-nombre strong { font-weight: 650; }
+.resumen.compacto .cifra-hero { font-size: 2.1rem; }
+.resumen.compacto .progreso { margin: 12px 0 14px; }
+.resumen.bloqueada { opacity: .7; }
+.mini-tarjeta.grande { width: 34px; height: 52px; border-radius: 6px; }
+.mini-tarjeta.grande::after { top: 9px; left: 15px; width: 10px; height: 8px; }
+.mini-tarjeta.grande.dv { width: 60px; height: 38px; }
+.mini-tarjeta.grande.dv::after { top: 13px; left: 8px; }
+.resumenes > * { animation: subir .55s var(--curva) both; }
+.resumenes > :nth-child(2) { animation-delay: .08s; }
+.resumenes > :nth-child(3) { animation-delay: .16s; }
+
 /* En Inicio: tarjetas más anchas con su disponible y una barra de uso del límite */
 .tarjeta-opcion.con-barra { flex: 1 1 240px; max-width: 340px; padding: 12px 16px 12px 12px; gap: 12px; }
 .to-barra { display: block; height: 5px; margin-top: 7px; border-radius: 99px; background: #e8eef3; overflow: hidden; }
